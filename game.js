@@ -632,26 +632,30 @@ class GameScene extends Phaser.Scene {
       if (gc === sqc && gr === sqr) return;
     }
 
+    // Trace a stroke from the exact previous position to the exact current
+    // one (not cell-quantized centers) at the mower's real width, with a
+    // round cap at the new point — every call, regardless of whether this
+    // cell was already mowed. Gating the draw itself on "already mowed"
+    // starves it: a single 16px cell can take several frames to cross, and
+    // skipping the draw on every frame after the first left only a small
+    // blob at each cell-entry point, not a continuous line. Because each
+    // stroke shares its start point with the previous stroke's end point,
+    // and caps are always drawn, this structurally can't gap — on turns,
+    // parallel lanes, or yard edges — the way discrete per-cell stamps
+    // (which always centered a texture in the cell, ignoring the player's
+    // actual sub-cell offset) did.
+    const { base } = DECK[this.deckHeight - 1];
+    const g = this.mowStrokeGfx;
+    g.clear();
+    g.lineStyle(MOWED_WIDTH, base, 1);
+    g.lineBetween(this.lastMowPos.x, this.lastMowPos.y, px, py);
+    g.fillStyle(base, 1);
+    g.fillCircle(px, py, MOWED_WIDTH / 2);
+    this.mowedRT.draw(g, 0, 0);
+    this.mowedRT.render();
+
     const cellH = this.grid[gr][gc];
     if (cellH === 0 || this.deckHeight < cellH) {
-      // Trace a stroke from the exact previous position to the exact
-      // current one (not cell-quantized centers) at the mower's real
-      // width, with a round cap at the new point. Because each stroke
-      // shares its start point with the previous stroke's end point, and
-      // caps are always drawn, this structurally can't gap — on turns,
-      // parallel lanes, or yard edges — the way discrete per-cell stamps
-      // (which always centered a texture in the cell, ignoring the
-      // player's actual sub-cell offset) did.
-      const { base } = DECK[this.deckHeight - 1];
-      const g = this.mowStrokeGfx;
-      g.clear();
-      g.lineStyle(MOWED_WIDTH, base, 1);
-      g.lineBetween(this.lastMowPos.x, this.lastMowPos.y, px, py);
-      g.fillStyle(base, 1);
-      g.fillCircle(px, py, MOWED_WIDTH / 2);
-      this.mowedRT.draw(g, 0, 0);
-      this.mowedRT.render();
-
       const firstMow = cellH === 0;
       this.grid[gr][gc] = this.deckHeight;
       if (firstMow) {
