@@ -400,9 +400,7 @@ class GameScene extends Phaser.Scene {
 
     this.input.on('pointerdown', (p) => {
       if (this.won) {
-        const next = (this.currentLevel + 1) % this.allLevels.length;
-        this.hideWin();
-        this.scene.restart({ levels: this.allLevels, level: next });
+        this.advanceLevel();
         return;
       }
       if (p.x > (YARD_X + YARD_COLS) * CELL) {
@@ -463,11 +461,7 @@ class GameScene extends Phaser.Scene {
     this.input.on('pointerupoutside', endJoy);
 
     this.input.keyboard.on('keydown-R', () => {
-      if (this.won) {
-        const next = (this.currentLevel + 1) % this.allLevels.length;
-        this.hideWin();
-        this.scene.restart({ levels: this.allLevels, level: next });
-      }
+      if (this.won) this.advanceLevel();
     });
     this.input.keyboard.on('keydown-B', () => this.toggleBlade());
     this.input.keyboard.on('keydown-ONE',   () => this.setDeckHeight(1));
@@ -682,6 +676,15 @@ class GameScene extends Phaser.Scene {
     this.winEl       = document.getElementById('win-overlay');
     this.winNextEl   = document.getElementById('win-next');
     this.winActionEl = document.getElementById('win-action');
+    // #win-overlay is a DOM element layered on top of the canvas, so once
+    // it's visible (pointer-events: auto) it — not the canvas — receives
+    // any tap. Phaser's own `pointerdown` listener is bound to the canvas
+    // element specifically and can never fire while this overlay is up, so
+    // "tap to continue" has to be wired here directly. Assigned (not
+    // addEventListener) since this element persists across scene.restart().
+    this.winEl.onpointerdown = () => {
+      if (this.won) this.advanceLevel();
+    };
     this.events.on('shutdown', () => {
       this.hideWin();
       this.scale.off('resize', this.syncUIOverlay, this);
@@ -689,6 +692,12 @@ class GameScene extends Phaser.Scene {
       if (this.squirrelTimer)  this.squirrelTimer.remove();
       this.squirrelGfx?.clear();
     });
+  }
+
+  advanceLevel() {
+    const next = (this.currentLevel + 1) % this.allLevels.length;
+    this.hideWin();
+    this.scene.restart({ levels: this.allLevels, level: next });
   }
 
   showWin() {
