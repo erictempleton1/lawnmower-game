@@ -62,7 +62,7 @@ const DECK = [
 
 // Tree texture variants (see buildLevelTextures()) — one is picked at
 // random per contiguous tree cluster in buildObstacleLayer().
-const TREE_TYPES = ['tree_round', 'tree_evergreen', 'tree_willow'];
+const TREE_TYPES = ['tree_round', 'tree_evergreen'];
 
 // Pads an authored level map out to YARD_ROWS×YARD_COLS with plain grass,
 // centering the original layout. A no-op once a map is already the right
@@ -213,51 +213,24 @@ class GameScene extends Phaser.Scene {
     tg.destroy();
 
     // Evergreen / pine — three stacked triangle tiers, dark and pointed.
+    // Kept to roughly the same footprint as tree_round's ~26px canopy
+    // (not spanning the full 32×32 tile) so it doesn't read as oversized
+    // next to it.
     const te = this.make.graphics({ add: false });
     te.fillStyle(0x000000, 0.2);
-    te.fillEllipse(16, 29, 22, 5);
+    te.fillEllipse(16, 29, 20, 5);
     te.fillStyle(0x5a3a1a);
     te.fillRect(14, 18, 4, 13);             // trunk (same footprint as tree_round)
     te.fillStyle(0x123a10);
-    te.fillTriangle(16, 8, 3, 25, 29, 25);  // bottom tier — widest, darkest
+    te.fillTriangle(16, 10, 6, 24, 26, 24); // bottom tier — widest, darkest
     te.fillStyle(0x1e5c18);
-    te.fillTriangle(16, 2, 6, 17, 26, 17);  // middle tier
+    te.fillTriangle(16, 5, 9, 18, 23, 18);  // middle tier
     te.fillStyle(0x2f7a22);
-    te.fillTriangle(16, 0, 9, 10, 23, 10);  // top tier — smallest, brightest
+    te.fillTriangle(16, 1, 11, 12, 21, 12); // top tier — smallest, brightest
     te.fillStyle(0x4a9a33, 0.5);
-    te.fillTriangle(16, 0, 16, 19, 23, 10); // highlight sliver down one side
+    te.fillTriangle(16, 1, 16, 20, 21, 12); // highlight sliver down one side
     te.generateTexture('tree_evergreen', S, S);
     te.destroy();
-
-    // Weeping willow — wide, light yellow-green canopy with thin drooping
-    // strands hanging past the trunk on both sides.
-    const tw = this.make.graphics({ add: false });
-    tw.fillStyle(0x000000, 0.2);
-    tw.fillEllipse(16, 29, 24, 6);
-    tw.fillStyle(0x6b5a2a);
-    tw.fillRect(14, 18, 4, 13);             // trunk (same footprint as tree_round)
-    tw.fillStyle(0x7a6a34, 0.4);
-    tw.fillRect(15, 18, 2, 13);             // trunk highlight
-    tw.fillStyle(0x5a7a28);
-    tw.fillEllipse(16, 9, 22, 12);          // canopy mass, sitting higher to leave room for strands
-    tw.fillStyle(0x7a9a3a);
-    tw.fillEllipse(15, 7, 16, 8);
-    tw.fillStyle(0x8caa4a, 0.7);
-    tw.fillEllipse(12, 5, 8, 4);            // canopy highlight
-    // Drooping strands — bright and thick enough to actually read against
-    // the canopy, hanging from its rim down past the trunk toward the
-    // ground on both sides (this is the detail that makes it a willow
-    // rather than just another round tree).
-    tw.lineStyle(2, 0x9ab84a, 0.95);
-    const strandXs = [3, 6, 10, 22, 26, 29];
-    for (let i = 0; i < strandXs.length; i++) {
-      const sx  = strandXs[i];
-      const sy  = 10 + (i % 2) * 3;
-      const len = 14 + (i % 3) * 3;
-      tw.lineBetween(sx, sy, sx + (i % 2 === 0 ? -1 : 1) * 2, sy + len);
-    }
-    tw.generateTexture('tree_willow', S, S);
-    tw.destroy();
 
     // Garden bed — 32×32 pixel art
     const gg = this.make.graphics({ add: false });
