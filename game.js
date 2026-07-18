@@ -107,6 +107,8 @@ class GameScene extends Phaser.Scene {
     this.mowAt(this.player.x, this.player.y);
     this.scheduleSprinkler();
     this.scheduleSquirrel();
+
+    document.getElementById('loading-screen')?.classList.add('hidden');
   }
 
   // ── Textures ─────────────────────────────────────────────────────────────

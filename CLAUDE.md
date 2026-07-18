@@ -5,8 +5,12 @@ Pixel art top-down lawnmower game. Phaser 4.2.1, vanilla JS, no build step. Depl
 
 ## Key Files
 - `game.js` — all game logic (single file)
-- `index.html` — canvas host + DOM UI overlay
+- `index.html` — canvas host + DOM UI overlay + loading screen
 - `levels/level-0N.json` — level maps (T=tree, G=garden, .=grass)
+- `vendor/phaser.min.js` — Phaser 4.2.1, vendored locally (not CDN) to avoid a third-party DNS/TLS roundtrip on load. To bump the Phaser version, manually re-download and overwrite this file.
+
+## Loading Screen
+`index.html` shows a pure CSS/HTML spinner (`#loading-screen`) on first paint, with no JS dependency — it's already in the markup before any script runs. `GameScene.create()` in `game.js` hides it (`.hidden` class) as its last step, once the scene is actually playable. If you add new async setup to `create()`, keep the hide call last.
 
 ## Grid Constants
 ```
