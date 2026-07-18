@@ -63,7 +63,10 @@ const SPEED_VALS = [45, 80, 130]; // turtle / medium / rabbit
 const GROWTH_FACTOR   = Math.max(YARD_COLS / BASE_YARD_COLS, YARD_ROWS / BASE_YARD_ROWS);
 const SWATH_CELLS     = Math.max(1, Math.round(GROWTH_FACTOR));
 const MOW_LOOP_RADIUS = Math.round((SWATH_CELLS - 1) / 2);
-const MOWER_SCALE     = 1 + MOW_LOOP_RADIUS * 0.35;
+// Scales 1:1 with the swath's cell width (not a softer fraction of it) so
+// the mower visually grows in lockstep with the cut instead of lagging
+// behind it — the mowed patch should never read as wider than the mower.
+const MOWER_SCALE     = SWATH_CELLS;
 
 // Lever layout — right border strip
 const LEVER_X     = (YARD_X + YARD_COLS) * CELL + 30; // deck lever
