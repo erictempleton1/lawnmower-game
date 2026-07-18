@@ -42,24 +42,6 @@ const SPEED_STEP = 2;              // fixed at medium — no speed toggle
 // up at a similar pace regardless of level number or how long a level takes.
 const DISTRACTIONS_PER_LEVEL = 4;
 
-// Matches the mower's actual visual width (wheel-to-wheel span in
-// drawPlayer()) rather than the full CELL, so a mowed swath never reads
-// wider than what actually cut it. Used by mowAt()'s continuous stroke.
-const MOWED_WIDTH = 12;
-
-// The stroke is drawn at MOWED_WIDTH centered on the player, so its edge
-// extends MOWED_WIDTH/2 past the tracked point. update()'s movement clamp
-// lets the player's exact center get within a couple px of the yard's
-// outer boundary — closer than that half-width — so without also clamping
-// the *paint* position, the stroke bleeds past the true edge into the
-// border. These insets keep the drawn stroke's outer edge flush with the
-// boundary at most, never past it, while leaving normal open-yard mowing
-// (anywhere farther from an edge than this) untouched.
-const MOW_DRAW_MIN_X = YARD_X * CELL + MOWED_WIDTH / 2;
-const MOW_DRAW_MAX_X = (YARD_X + YARD_COLS) * CELL - MOWED_WIDTH / 2;
-const MOW_DRAW_MIN_Y = YARD_Y * CELL + MOWED_WIDTH / 2;
-const MOW_DRAW_MAX_Y = (YARD_Y + YARD_ROWS) * CELL - MOWED_WIDTH / 2;
-
 // ─── Palette ─────────────────────────────────────────────────────────────────
 const C = {
   bg:         0x2d5a1b,
@@ -171,11 +153,13 @@ class GameScene extends Phaser.Scene {
   // ── Textures ─────────────────────────────────────────────────────────────
 
   buildMowedTextures() {
-    // The mower's own mowed swath is now drawn as a continuous stroke
-    // tracing the player's exact path (see mowAt()), not stamped per-cell —
-    // that's what makes it gap-free on turns, parallel lanes, and edges.
-    // The only remaining per-cell stamp is gardens' instant full-cell
-    // auto-mow (checkClusterCompletion()), which needs a plain texture.
+    // One full-cell (16×16) texture per deck height — used both for the
+    // player's own mowing (mowAt()) and gardens' instant auto-mow
+    // (checkClusterCompletion()). A single always-full-cell shape (no
+    // narrower travel-direction variants) is what keeps mowed cells
+    // grid-aligned and gap-free on any path: full cells always tile
+    // perfectly with their neighbors, and since they're stamped at exact
+    // grid-cell coordinates they can never render outside the yard.
     for (let h = 1; h <= 3; h++) {
       const { base, stripe } = DECK[h - 1];
       const gf = this.make.graphics({ add: false });
@@ -388,13 +372,6 @@ class GameScene extends Phaser.Scene {
     };
     this.player.gfx.setDepth(2);
     this.drawPlayer();
-
-    // Continuous mow-stroke state: mowAt() traces a line from the last
-    // position to the current one every frame, so lastMowPos needs to
-    // start at the spawn point (an initial zero-length "stroke" is fine —
-    // it degrades to just the fillCircle cap).
-    this.mowStrokeGfx = this.make.graphics({ add: false });
-    this.lastMowPos   = { x: this.player.x, y: this.player.y };
   }
 
   drawPlayer() {
@@ -645,46 +622,31 @@ class GameScene extends Phaser.Scene {
       if (gc === sqc && gr === sqr) return;
     }
 
-    // Trace a stroke from the exact previous position to the exact current
-    // one (not cell-quantized centers) at the mower's real width, with a
-    // round cap at the new point — every call, regardless of whether this
-    // cell was already mowed. Gating the draw itself on "already mowed"
-    // starves it: a single 16px cell can take several frames to cross, and
-    // skipping the draw on every frame after the first left only a small
-    // blob at each cell-entry point, not a continuous line. Because each
-    // stroke shares its start point with the previous stroke's end point,
-    // and caps are always drawn, this structurally can't gap — on turns,
-    // parallel lanes, or yard edges — the way discrete per-cell stamps
-    // (which always centered a texture in the cell, ignoring the player's
-    // actual sub-cell offset) did.
-    // Clamp only the paint position (not px/py used for grid bookkeeping
-    // above, and not the player's actual movement/collision) so the
-    // stroke's half-width can't bleed past the yard's outer edge into the
-    // border — see MOW_DRAW_MIN/MAX_X/Y.
-    const dx = Phaser.Math.Clamp(px, MOW_DRAW_MIN_X, MOW_DRAW_MAX_X);
-    const dy = Phaser.Math.Clamp(py, MOW_DRAW_MIN_Y, MOW_DRAW_MAX_Y);
+    const cellH = this.grid[gr][gc];
+    if (cellH !== 0 && this.deckHeight >= cellH) return;
 
-    const { base } = DECK[this.deckHeight - 1];
-    const g = this.mowStrokeGfx;
-    g.clear();
-    g.lineStyle(MOWED_WIDTH, base, 1);
-    g.lineBetween(this.lastMowPos.x, this.lastMowPos.y, dx, dy);
-    g.fillStyle(base, 1);
-    g.fillCircle(dx, dy, MOWED_WIDTH / 2);
-    this.mowedRT.draw(g, 0, 0);
+    // Stamp the whole grid cell, always the same full-size texture
+    // regardless of travel direction. A mower-width sub-cell stroke reads
+    // as smoother, but it isn't grid-aligned — it can creep toward the
+    // yard border independent of collision, and it stops looking like a
+    // blocky, cell-by-cell mow. A full-cell stamp is always exactly one
+    // grid cell, so it can never render outside the yard (cells are
+    // always within YARD_COLS×YARD_ROWS by construction) and always tiles
+    // perfectly with its neighbors on any path — straight, diagonal, or a
+    // turn — since there's only one shape and it always fills the cell.
+    const firstMow = cellH === 0;
+    this.grid[gr][gc] = this.deckHeight;
+    if (firstMow) this.mowedCount++;
+
+    const cx = (YARD_X + gc) * CELL + CELL / 2;
+    const cy = (YARD_Y + gr) * CELL + CELL / 2;
+    this.mowedRT.stamp(`mowed_${this.deckHeight}_full`, null, cx, cy);
     this.mowedRT.render();
 
-    const cellH = this.grid[gr][gc];
-    if (cellH === 0 || this.deckHeight < cellH) {
-      const firstMow = cellH === 0;
-      this.grid[gr][gc] = this.deckHeight;
-      if (firstMow) {
-        this.mowedCount++;
-        this.checkClusterCompletion();
-        this.updateHUD();
-      }
+    if (firstMow) {
+      this.checkClusterCompletion();
+      this.updateHUD();
     }
-    this.lastMowPos = { x: dx, y: dy };
   }
 
   checkClusterCompletion() {
