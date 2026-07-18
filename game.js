@@ -422,7 +422,14 @@ class GameScene extends Phaser.Scene {
   drawPlayer() {
     const g = this.player.gfx;
     g.clear();
-    g.setPosition(this.player.x, this.player.y);
+    // Snap the rendered mower to the center of the cell mowAt() swaths
+    // around (same floor formula as its gcCenter/grCenter) — movement stays
+    // continuous (this.player.x/y are untouched), but this keeps the mower
+    // always exactly centered on the strip it's cutting instead of
+    // wherever it happens to sit within that cell.
+    const gc = Math.floor((this.player.x - YARD_X * CELL) / CELL);
+    const gr = Math.floor((this.player.y - YARD_Y * CELL) / CELL);
+    g.setPosition((YARD_X + gc) * CELL + CELL / 2, (YARD_Y + gr) * CELL + CELL / 2);
     const dir = this.player.dir;
     const mox = dir === 'left' ? -10 : dir === 'right' ? 10 : 0;
     const moy = dir === 'up'   ? -10 : dir === 'down'  ? 10 : 0;
