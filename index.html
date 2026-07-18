@@ -10,7 +10,13 @@
       background: #1a1a2e;
       display: flex;
       flex-direction: column;
+      /* 100vh assumes the browser chrome (e.g. Safari's address/search
+         bar) is collapsed, so the page renders taller than what's actually
+         visible when it's showing — pushing bottom content underneath it.
+         100dvh tracks the real, currently-visible viewport; vh stays as a
+         fallback for browsers that don't support dvh. */
       height: 100vh;
+      height: 100dvh;
       overflow: hidden;
     }
     canvas { display: block; image-rendering: pixelated; }
@@ -42,6 +48,10 @@
         display: flex;
         align-items: center;    /* vertically center the D-pad in the leftover space */
         justify-content: center; /* and horizontally, across the full-width control zone */
+        /* Extra safety margin below the D-pad for the iPhone home-indicator
+           bar / Safari's collapsed-toolbar strip, on top of CONTROL_RESERVE_PX
+           already reserving room in game.js. */
+        padding-bottom: max(12px, env(safe-area-inset-bottom));
       }
     }
 

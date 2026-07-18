@@ -8,7 +8,7 @@ const MAX_YARD_ROWS  = 60;  // safety ceiling — tall phones can genuinely need
 
 // Reserves room for the mobile D-pad below the canvas in portrait — must
 // stay in sync with #controls-spacer's real height in index.html.
-const CONTROL_RESERVE_PX = 130;
+const CONTROL_RESERVE_PX = 170;
 
 // On tall/narrow phone screens (portrait + touch), grow the yard's row
 // count so the grass fills available vertical space instead of the fixed
