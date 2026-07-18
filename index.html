@@ -26,16 +26,17 @@
     /* Reserves space below the canvas for the D-pad. Empty by default
        (desktop and mobile landscape already use the full window well, so
        #game-container's flex:1 claims everything and this stays at 0).
-       Only mobile portrait needs it: a 4:3 canvas is width-bound on a tall
-       narrow screen, so #game-container there is pinned to exactly the
-       canvas's rendered height via aspect-ratio, and this spacer becomes a
-       real, generously-sized control zone with everything left over. */
+       Only mobile portrait needs it: the yard grid is sized (in game.js) so
+       its aspect ratio nearly fills the screen width-bound, and
+       #game-container is pinned to exactly that rendered height via an
+       aspect-ratio set by game.js's applyResponsiveLayout() — this spacer
+       becomes a real control zone with everything left over. */
     #controls-spacer {
       flex: 0 0 0px;
       position: relative;
     }
     @media (hover: none) and (pointer: coarse) and (orientation: portrait) {
-      #game-container  { flex: 0 0 auto; width: 100%; aspect-ratio: 384 / 288; }
+      #game-container  { flex: 0 0 auto; width: 100%; }
       #controls-spacer {
         flex: 1 1 auto;
         display: flex;
@@ -51,11 +52,14 @@
       z-index: 5;
     }
     /* This div lives in game-pixel coordinates; JS applies a transform
-       so it sits exactly on top of the Phaser canvas at whatever scale. */
+       so it sits exactly on top of the Phaser canvas at whatever scale.
+       Width/height below are just a fallback — game.js's
+       applyResponsiveLayout() sets the real W/H inline, since the yard
+       grid (and so the canvas size) varies per device. */
     #ui-canvas {
       position: absolute;
-      width: 384px;   /* W = COLS * CELL = 24 * 16 */
-      height: 288px;  /* H = ROWS * CELL = 18 * 16 */
+      width: 384px;
+      height: 288px;
       transform-origin: top left;
     }
     #ui-canvas .ui-text {
@@ -67,6 +71,9 @@
     #hud-level  { left: 8px;  top: 6px; font-size: 9px; color: #ffcc44; font-weight: 700; }
     #hud-mow    { left: 30px; top: 6px; font-size: 9px; color: #aaffaa; }
     #hud-pct    { right: 46px; top: 6px; font-size: 10px; color: #ffffff; font-weight: 600; }
+    /* `left` on the lever-panel labels below is a fallback for the base
+       18-column yard; applyResponsiveLayout() in game.js overrides it
+       inline once the actual (possibly wider) yard size is known. */
     #deck-label  { left: 368px; top: 76px; font-size: 7px; color: #aaaaaa; transform: translateX(-50%); }
     #notch-3     { left: 358px; top: 109px; font-size: 7px; }
     #notch-2     { left: 358px; top: 185px; font-size: 7px; }

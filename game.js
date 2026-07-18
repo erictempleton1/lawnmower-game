@@ -1,13 +1,54 @@
 // ─── Constants ───────────────────────────────────────────────────────────────
 const CELL = 16;
-const COLS = 24;
-const ROWS = 18;
 const YARD_X = 3;
 const YARD_Y = 3;
-const YARD_COLS = COLS - YARD_X * 2;   // 24
-const YARD_ROWS = ROWS - YARD_Y * 2;   // 16
-const W = COLS * CELL;                  // 480
-const H = ROWS * CELL;                  // 352
+const BASE_YARD_COLS = 18;   // authored level width  (levels/level-0N.json)
+const BASE_YARD_ROWS = 12;   // authored level height
+const MAX_YARD_COLS  = 40;   // safety ceiling — not expected to bind on any real device
+const MAX_YARD_ROWS  = 30;
+
+// Estimated height reserved for the mobile D-pad below the canvas in
+// portrait mode (see #controls-spacer in index.html, sized dynamically via
+// flexbox) — used here only to pick a good yard aspect ratio up front.
+const CONTROL_RESERVE_PX = 210;
+
+// The yard is authored as an 18×12 (~4:3) grid, which doesn't match most
+// phone screens. Rather than always letterboxing that fixed shape, grow
+// whichever dimension (columns for wide screens, rows for tall ones) makes
+// the yard's aspect ratio match the actual viewport — the extra space is
+// plain grass padded around the level's authored layout (see normalizeMap),
+// so trees/gardens keep their original relative position, just with more
+// lawn to mow around them.
+function computeYardSize() {
+  const isPortraitTouch = window.matchMedia(
+    '(hover: none) and (pointer: coarse) and (orientation: portrait)'
+  ).matches;
+  const availW = window.innerWidth;
+  const availH = isPortraitTouch
+    ? window.innerHeight - CONTROL_RESERVE_PX
+    : window.innerHeight;
+
+  const baseAspect  = (BASE_YARD_COLS + YARD_X * 2) / (BASE_YARD_ROWS + YARD_Y * 2);
+  const availAspect = availW / Math.max(availH, 1);
+
+  let yardCols = BASE_YARD_COLS;
+  let yardRows = BASE_YARD_ROWS;
+  if (availAspect > baseAspect) {
+    yardCols = Math.round(availAspect * (BASE_YARD_ROWS + YARD_Y * 2)) - YARD_X * 2;
+  } else {
+    yardRows = Math.round((BASE_YARD_COLS + YARD_X * 2) / availAspect) - YARD_Y * 2;
+  }
+  return {
+    yardCols: Phaser.Math.Clamp(yardCols, BASE_YARD_COLS, MAX_YARD_COLS),
+    yardRows: Phaser.Math.Clamp(yardRows, BASE_YARD_ROWS, MAX_YARD_ROWS),
+  };
+}
+
+const { yardCols: YARD_COLS, yardRows: YARD_ROWS } = computeYardSize();
+const COLS = YARD_COLS + YARD_X * 2;
+const ROWS = YARD_ROWS + YARD_Y * 2;
+const W = COLS * CELL;
+const H = ROWS * CELL;
 const WIN_PCT   = 100;
 const SPEED_VALS = [45, 80, 130]; // turtle / medium / rabbit
 
@@ -40,6 +81,27 @@ const DECK = [
 let g_distractionsEnabled = true;
 let g_speedStep         = 2;
 
+// Pads an authored level map out to YARD_ROWS×YARD_COLS with plain grass,
+// centering the original layout. A no-op once a map is already the right
+// size, so it's safe to call again on scene.restart (which reuses the same
+// already-normalized level objects).
+function normalizeMap(map) {
+  if (map.length === YARD_ROWS && map[0].length === YARD_COLS) return map;
+  const baseRows = map.length, baseCols = map[0].length;
+  const padTop  = Math.floor((YARD_ROWS - baseRows) / 2);
+  const padLeft = Math.floor((YARD_COLS - baseCols) / 2);
+  const out = [];
+  for (let r = 0; r < YARD_ROWS; r++) {
+    let row = '';
+    for (let c = 0; c < YARD_COLS; c++) {
+      const sr = r - padTop, sc = c - padLeft;
+      row += (sr >= 0 && sr < baseRows && sc >= 0 && sc < baseCols) ? map[sr][sc] : '.';
+    }
+    out.push(row);
+  }
+  return out;
+}
+
 // ─── Boot scene ───────────────────────────────────────────────────────────────
 // Loads levels/index.json then each level file, then starts GameScene.
 class BootScene extends Phaser.Scene {
@@ -65,7 +127,7 @@ class GameScene extends Phaser.Scene {
   constructor() { super('Game'); }
 
   init(data) {
-    this.allLevels    = data?.levels ?? [];
+    this.allLevels    = (data?.levels ?? []).map(lvl => ({ ...lvl, map: normalizeMap(lvl.map) }));
     this.currentLevel = data?.level  ?? 0;
   }
 
@@ -1032,6 +1094,48 @@ class GameScene extends Phaser.Scene {
     this.drawJoystick();
   }
 }
+
+// ─── Responsive DOM layout ────────────────────────────────────────────────────
+// Applies the computed W/H to the DOM pieces that assume a fixed canvas size,
+// since YARD_COLS/YARD_ROWS (and so W/H) now vary per device. Runs once at
+// load — the grid size doesn't live-recompute on resize/rotate.
+function applyResponsiveLayout() {
+  const isPortraitTouch = window.matchMedia(
+    '(hover: none) and (pointer: coarse) and (orientation: portrait)'
+  ).matches;
+
+  // Only in portrait does #game-container need pinning to the canvas's exact
+  // rendered height (see index.html) — landscape/desktop already fill the
+  // window via flex:1, and the computed W/H is chosen to closely match it.
+  if (isPortraitTouch) {
+    const gameContainer = document.getElementById('game-container');
+    if (gameContainer) gameContainer.style.aspectRatio = `${W} / ${H}`;
+  }
+
+  const uiCanvas = document.getElementById('ui-canvas');
+  if (uiCanvas) {
+    uiCanvas.style.width  = W + 'px';
+    uiCanvas.style.height = H + 'px';
+  }
+
+  // The lever/toggle labels dock to the right border strip, which shifts
+  // right when YARD_COLS grows (wide/landscape screens) — reposition them
+  // to match instead of leaving them at their authored 18-column offsets.
+  const setLeft = (id, px) => {
+    const el = document.getElementById(id);
+    if (el) el.style.left = px + 'px';
+  };
+  setLeft('deck-label',    LEVER_X + 2);
+  setLeft('notch-3',       LEVER_X - 8);
+  setLeft('notch-2',       LEVER_X - 8);
+  setLeft('notch-1',       LEVER_X - 8);
+  setLeft('speed-label',   SPD_LEVER_X + 2);
+  setLeft('speed-rabbit',  SPD_LEVER_X + 2);
+  setLeft('speed-turtle',  SPD_LEVER_X + 2);
+  setLeft('toggle-blade',  LEVER_PNL.x);
+  setLeft('toggle-sprink', LEVER_PNL.x);
+}
+applyResponsiveLayout();
 
 // ─── Boot ────────────────────────────────────────────────────────────────────
 new Phaser.Game({

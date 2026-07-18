@@ -15,11 +15,12 @@ Pixel art top-down lawnmower game. Phaser 4.2.1, vanilla JS, no build step. Depl
 ## Grid Constants
 ```
 CELL = 16px
-COLS = 24, ROWS = 18 (full canvas)
 YARD_X = 3, YARD_Y = 3 (border offset)
-YARD_COLS = 18, YARD_ROWS = 12 (playable area)
-W = 384, H = 288
+BASE_YARD_COLS = 18, BASE_YARD_ROWS = 12 (authored level size, levels/level-0N.json)
 ```
+`YARD_COLS`/`YARD_ROWS` (and so `COLS`/`ROWS`/`W`/`H`) are **computed at load** by `computeYardSize()`, not fixed — they grow past the base 18×12 so the yard's aspect ratio matches the device's viewport (columns grow for wide/landscape screens, rows grow for tall/portrait ones), clamped to `MAX_YARD_COLS`/`MAX_YARD_ROWS` as a safety ceiling. This is a one-time computation at page load; it does not live-recompute on resize or orientation change. `normalizeMap()` pads each authored level's map out to the computed size with plain grass, centering the original trees/gardens — level files themselves stay a fixed 18×12 and never need to change.
+
+Anything that docks to the right border strip (lever panel, BLADE/DIST toggles) is positioned from `LEVER_X`/`SPD_LEVER_X`/`LEVER_PNL.x`, which are derived from `YARD_COLS` — so it shifts automatically when the yard grows wider. The matching DOM labels in `index.html` get their `left` set by `applyResponsiveLayout()` in `game.js` (their CSS values are just an 18-column fallback).
 
 ## Render Layer Depths (bottom → top)
 | Depth | Object |
