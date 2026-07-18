@@ -427,13 +427,16 @@ class GameScene extends Phaser.Scene {
     const mox = dir === 'left' ? -10 : dir === 'right' ? 10 : 0;
     const moy = dir === 'up'   ? -10 : dir === 'down'  ? 10 : 0;
 
+    // Deck spans exactly CELL (16px) wide at scale 1 — not just visually
+    // close — so WORLD_SCALE (== SWATH_CELLS) scales it to precisely match
+    // the mow swath's width at any size, never narrower or wider.
     g.fillStyle(C.mowerBody);
-    g.fillRect(mox - 5, moy - 4, 10, 8);
+    g.fillRect(mox - 8, moy - 4, 16, 8);
     g.fillStyle(C.mowerWheel);
-    g.fillRect(mox - 6, moy - 5, 3, 3);
-    g.fillRect(mox + 3, moy - 5, 3, 3);
-    g.fillRect(mox - 6, moy + 2, 3, 3);
-    g.fillRect(mox + 3, moy + 2, 3, 3);
+    g.fillRect(mox - 8, moy - 5, 3, 3);
+    g.fillRect(mox + 5, moy - 5, 3, 3);
+    g.fillRect(mox - 8, moy + 2, 3, 3);
+    g.fillRect(mox + 5, moy + 2, 3, 3);
     g.lineStyle(2, 0x884400);
     g.lineBetween(0, 0, mox * 0.55, moy * 0.55);
     g.fillStyle(C.pants);
