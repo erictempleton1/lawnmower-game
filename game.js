@@ -36,6 +36,12 @@ const WIN_PCT   = 100;
 const SPEED_VALS = [45, 80, 130]; // turtle / medium / rabbit
 const SPEED_STEP = 2;              // fixed at medium — no speed toggle
 
+// Sprinklers/squirrels per level used to cap at (currentLevel + 1) — just 1
+// on level 1 — which reads as barely-there now that denser level layouts
+// make a full mow take a lot longer. A flat, higher cap keeps them showing
+// up at a similar pace regardless of level number or how long a level takes.
+const DISTRACTIONS_PER_LEVEL = 4;
+
 // Matches the mower's actual visual width (wheel-to-wheel span in
 // drawPlayer()) rather than the full CELL, so a mowed swath never reads
 // wider than what actually cut it. Used by mowAt()'s continuous stroke.
@@ -679,7 +685,7 @@ class GameScene extends Phaser.Scene {
   // ── Sprinkler ─────────────────────────────────────────────────────────────
 
   scheduleSprinkler() {
-    if (this.sprinklerCount >= this.currentLevel + 1 || this.won) return;
+    if (this.sprinklerCount >= DISTRACTIONS_PER_LEVEL || this.won) return;
     const pct         = this.mowedCount / this.totalCells;
     const speedFactor = 1 + (2 - this.speedStep) * 0.35; // 1.35 turtle → 1.0 mid → 0.65 rabbit
     const delay = (Phaser.Math.Between(3000, 6000)
@@ -815,7 +821,7 @@ class GameScene extends Phaser.Scene {
   // ── Squirrel ──────────────────────────────────────────────────────────────
 
   scheduleSquirrel() {
-    if (this.won || this.squirrelCount >= this.currentLevel + 1) return;
+    if (this.won || this.squirrelCount >= DISTRACTIONS_PER_LEVEL) return;
     this.squirrelTimer = this.time.delayedCall(
       Phaser.Math.Between(6000, 14000), this.launchSquirrel, [], this);
   }
