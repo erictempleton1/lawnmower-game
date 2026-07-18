@@ -1,0 +1,1 @@
+Stage all modified tracked files, write a concise commit message describing what changed, commit, and push to origin main. GitHub Actions will deploy to https://erictempleton1.github.io/lawnmower-game/ automatically.
