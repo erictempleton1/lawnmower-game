@@ -1042,7 +1042,12 @@ new Phaser.Game({
   backgroundColor: '#1a1a2e',
   scale: {
     mode: Phaser.Scale.FIT,
-    autoCenter: Phaser.Scale.CENTER_BOTH,
+    // Horizontal-only centering: when #game-container has vertical slack
+    // (mobile portrait, after #controls-spacer eats into it), this pins the
+    // canvas to the top instead of splitting the gap above and below it —
+    // one contiguous control area at the bottom beats two dead strips.
+    autoCenter: Phaser.Scale.CENTER_HORIZONTALLY,
+    parent: 'game-container',
   },
   input: { activePointers: 3 },
   scene: [BootScene, GameScene],

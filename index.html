@@ -9,12 +9,39 @@
     body {
       background: #1a1a2e;
       display: flex;
-      justify-content: center;
-      align-items: center;
+      flex-direction: column;
       height: 100vh;
       overflow: hidden;
     }
     canvas { display: block; image-rendering: pixelated; }
+
+    /* #game-container holds the Phaser canvas; Phaser's FIT scale mode
+       fits + centers the canvas within whatever box this element resolves
+       to, so shrinking it (below) is how we carve out room for controls. */
+    #game-container {
+      flex: 1 1 auto;
+      min-height: 0;
+      position: relative;
+    }
+    /* Reserves space below the canvas for the D-pad. Empty by default
+       (desktop and mobile landscape already use the full window well, so
+       #game-container's flex:1 claims everything and this stays at 0).
+       Only mobile portrait needs it: a 4:3 canvas is width-bound on a tall
+       narrow screen, so #game-container there is pinned to exactly the
+       canvas's rendered height via aspect-ratio, and this spacer becomes a
+       real, generously-sized control zone with everything left over. */
+    #controls-spacer {
+      flex: 0 0 0px;
+      position: relative;
+    }
+    @media (hover: none) and (pointer: coarse) and (orientation: portrait) {
+      #game-container  { flex: 0 0 auto; width: 100%; aspect-ratio: 384 / 288; }
+      #controls-spacer {
+        flex: 1 1 auto;
+        display: flex;
+        align-items: center; /* vertically center the D-pad in the leftover space */
+      }
+    }
 
     /* ── UI overlay: scaled to match the canvas ─────────────────────────── */
     #ui-layer {
@@ -89,6 +116,8 @@
     /* ── Mobile D-pad: touch-only, hidden for mouse/desktop ─────────────── */
     #dpad {
       display: none;
+      /* Default (mobile landscape): fixed over the canvas's left/right dead
+         zone, same as before. */
       position: fixed;
       left: 18px;
       bottom: 18px;
@@ -99,6 +128,24 @@
     }
     @media (hover: none) and (pointer: coarse) {
       #dpad { display: block; }
+    }
+    @media (hover: none) and (pointer: coarse) and (orientation: portrait) {
+      /* Portrait: a flex child of #controls-spacer (vertically centered in
+         the leftover space) instead of fixed to the screen edge — keeps it
+         adjacent to the mowing area rather than stranded below a gap.
+         Also sized up a notch since there's real room to work with. */
+      #dpad {
+        position: relative;
+        left: auto; top: auto; bottom: auto;
+        margin-left: 18px;
+        width: 180px;
+        height: 180px;
+      }
+      #dpad .dpad-btn { width: 60px; height: 60px; font-size: 24px; line-height: 56px; }
+      #dpad #dpad-up    { left: 60px;  top: 0; }
+      #dpad #dpad-left  { left: 0;     top: 60px; }
+      #dpad #dpad-right { left: 120px; top: 60px; }
+      #dpad #dpad-down  { left: 60px;  top: 120px; }
     }
     .dpad-btn {
       position: absolute;
@@ -166,6 +213,20 @@
     <div id="loading-text">Loading mower&hellip;</div>
   </div>
 
+  <!-- Phaser injects the canvas here; sized/reserved via CSS above -->
+  <div id="game-container"></div>
+
+  <!-- Reserved control zone (real height only in mobile portrait); holds
+       the D-pad so it's anchored relative to it, not the viewport edge. -->
+  <div id="controls-spacer">
+    <div id="dpad">
+      <button id="dpad-up"    class="dpad-btn" aria-label="Up">▲</button>
+      <button id="dpad-left"  class="dpad-btn" aria-label="Left">◀</button>
+      <button id="dpad-right" class="dpad-btn" aria-label="Right">▶</button>
+      <button id="dpad-down"  class="dpad-btn" aria-label="Down">▼</button>
+    </div>
+  </div>
+
   <!-- UI text overlay (positioned over canvas by JS) -->
   <div id="ui-layer">
     <div id="ui-canvas">
@@ -182,14 +243,6 @@
       <span id="notch-2"    class="ui-text">2</span>
       <span id="notch-1"    class="ui-text">1</span>
     </div>
-  </div>
-
-  <!-- Mobile D-pad (CSS-hidden on mouse/desktop) -->
-  <div id="dpad">
-    <button id="dpad-up"    class="dpad-btn" aria-label="Up">▲</button>
-    <button id="dpad-left"  class="dpad-btn" aria-label="Left">◀</button>
-    <button id="dpad-right" class="dpad-btn" aria-label="Right">▶</button>
-    <button id="dpad-down"  class="dpad-btn" aria-label="Down">▼</button>
   </div>
 
   <!-- Win screen -->
