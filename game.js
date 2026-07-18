@@ -54,6 +54,10 @@ const DECK = [
   { base: 0x2e5c1e, stripe: 0x3a6e2a }, // 3 — tallest / darkest
 ];
 
+// cellShape codes: which mowed texture variant a cell was cut with — see
+// buildMowedTextures() for what each shape is and why.
+const MOW_SHAPE_KEYS = ['v', 'h', 'full'];
+
 // Pads an authored level map out to YARD_ROWS×YARD_COLS with plain grass,
 // centering the original layout. A no-op once a map is already the right
 // size, so it's safe to call again on scene.restart (which reuses the same
@@ -108,8 +112,8 @@ class GameScene extends Phaser.Scene {
 
   create() {
     this.grid           = Array.from({ length: YARD_ROWS }, () => new Uint8Array(YARD_COLS));
-    // Which mowed-texture variant each cell was cut with (0=vertical-travel
-    // strip, 1=horizontal-travel strip) — needed so rebuildMowedRT() (used
+    // Which mowed-texture variant each cell was cut with — see
+    // MOW_SHAPE_KEYS/getMowShapeCode() — needed so rebuildMowedRT() (used
     // after a sprinkler revert) can re-stamp each cell with the same shape
     // it was originally mowed with, not just its height.
     this.cellShape       = Array.from({ length: YARD_ROWS }, () => new Uint8Array(YARD_COLS));
@@ -395,6 +399,7 @@ class GameScene extends Phaser.Scene {
       x: YARD_X * CELL + CELL / 2,
       y: YARD_Y * CELL + CELL / 2,
       dir: 'down',
+      moveDX: 0, moveDY: 1, // last movement vector, for mowAt()'s shape choice
       gfx: this.add.graphics(),
     };
     this.player.gfx.setDepth(2);
@@ -467,6 +472,20 @@ class GameScene extends Phaser.Scene {
       if (this.obstacleGrid[gr][gc] === 1) return true;
     }
     return false;
+  }
+
+  // Picks which mowed-texture shape (see buildMowedTextures()) matches the
+  // player's current travel vector. A true diagonal doesn't align with
+  // either the vertical or horizontal strip — consecutive diagonally-
+  // stepped cells only touch at a corner, not an edge, so the narrow
+  // strips left a visible gap between them — so this falls back to the
+  // full-size (gap-free, if not perfectly mower-width) texture whenever
+  // movement isn't mostly along one axis.
+  getMowShapeCode() {
+    const { moveDX: dx, moveDY: dy } = this.player;
+    const DIAGONAL_THRESHOLD = 0.3;
+    if (Math.abs(dx) > DIAGONAL_THRESHOLD && Math.abs(dy) > DIAGONAL_THRESHOLD) return 2; // full
+    return Math.abs(dx) >= Math.abs(dy) ? 1 : 0; // 1=h, 0=v
   }
 
   // ── Input ─────────────────────────────────────────────────────────────────
@@ -656,14 +675,14 @@ class GameScene extends Phaser.Scene {
     // Shape follows current travel direction, not just deck height — see
     // buildMowedTextures() for why: it's how a straight pass tiles without
     // gaps while still narrowing to the mower's actual width.
-    const shapeCode = (this.player.dir === 'left' || this.player.dir === 'right') ? 1 : 0;
+    const shapeCode = this.getMowShapeCode();
     this.grid[gr][gc]      = this.deckHeight;
     this.cellShape[gr][gc] = shapeCode;
     if (firstMow) this.mowedCount++;
 
     const cx = (YARD_X + gc) * CELL + CELL / 2;
     const cy = (YARD_Y + gr) * CELL + CELL / 2;
-    this.mowedRT.stamp(`mowed_${this.deckHeight}_${shapeCode ? 'h' : 'v'}`, null, cx, cy);
+    this.mowedRT.stamp(`mowed_${this.deckHeight}_${MOW_SHAPE_KEYS[shapeCode]}`, null, cx, cy);
     this.mowedRT.render();
 
     if (firstMow) {
@@ -748,7 +767,7 @@ class GameScene extends Phaser.Scene {
         // Re-stamp with whatever shape this cell was originally mowed with
         // (garden auto-mow cells always used 'full') so a sprinkler revert
         // doesn't change a cell's appearance, just its mowed state.
-        const shapeKey = this.obstacleGrid[r][c] ? 'full' : (this.cellShape[r][c] ? 'h' : 'v');
+        const shapeKey = this.obstacleGrid[r][c] ? 'full' : MOW_SHAPE_KEYS[this.cellShape[r][c]];
         this.mowedRT.stamp(`mowed_${h}_${shapeKey}`, null, cx, cy);
       }
     }
@@ -964,6 +983,11 @@ class GameScene extends Phaser.Scene {
         this.player.dir = dx > 0 ? 'right' : 'left';
       else
         this.player.dir = dy > 0 ? 'down' : 'up';
+      // Kept as the actual (dx,dy) vector, not just the dominant-axis dir
+      // above, so mowAt() can tell true diagonal movement apart from
+      // mostly-straight movement — see buildMowedTextures().
+      this.player.moveDX = dx;
+      this.player.moveDY = dy;
     }
 
     this.mowAt(this.player.x, this.player.y);
