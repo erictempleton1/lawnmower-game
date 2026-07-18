@@ -36,6 +36,11 @@ const WIN_PCT   = 100;
 const SPEED_VALS = [45, 80, 130]; // turtle / medium / rabbit
 const SPEED_STEP = 2;              // fixed at medium — no speed toggle
 
+// Matches the mower's actual visual width (wheel-to-wheel span in
+// drawPlayer()) rather than the full CELL, so a mowed swath never reads
+// wider than what actually cut it. Used by mowAt()'s continuous stroke.
+const MOWED_WIDTH = 12;
+
 // ─── Palette ─────────────────────────────────────────────────────────────────
 const C = {
   bg:         0x2d5a1b,
@@ -53,10 +58,6 @@ const DECK = [
   { base: 0x447830, stripe: 0x548840 }, // 2 — medium
   { base: 0x2e5c1e, stripe: 0x3a6e2a }, // 3 — tallest / darkest
 ];
-
-// cellShape codes: which mowed texture variant a cell was cut with — see
-// buildMowedTextures() for what each shape is and why.
-const MOW_SHAPE_KEYS = ['v', 'h', 'full'];
 
 // Pads an authored level map out to YARD_ROWS×YARD_COLS with plain grass,
 // centering the original layout. A no-op once a map is already the right
@@ -112,11 +113,6 @@ class GameScene extends Phaser.Scene {
 
   create() {
     this.grid           = Array.from({ length: YARD_ROWS }, () => new Uint8Array(YARD_COLS));
-    // Which mowed-texture variant each cell was cut with — see
-    // MOW_SHAPE_KEYS/getMowShapeCode() — needed so rebuildMowedRT() (used
-    // after a sprinkler revert) can re-stamp each cell with the same shape
-    // it was originally mowed with, not just its height.
-    this.cellShape       = Array.from({ length: YARD_ROWS }, () => new Uint8Array(YARD_COLS));
     this.mowedCount     = 0;
     this.won            = false;
     this.deckHeight     = 2;
@@ -156,44 +152,14 @@ class GameScene extends Phaser.Scene {
   // ── Textures ─────────────────────────────────────────────────────────────
 
   buildMowedTextures() {
-    // Matches the mower's actual visual width (wheel-to-wheel span in
-    // drawPlayer(), 12px) rather than the full CELL (16px), so a mowed
-    // patch never reads as wider than whatever mowed it — but only across
-    // the direction of travel. Narrowing *both* dimensions left a visible
-    // gap of unmowed grass between consecutive cells in a straight pass
-    // (each cell's patch was smaller than the cell on every side), so
-    // there are two travel-direction variants that stay full-CELL sized
-    // along the axis of movement (tiling seamlessly cell-to-cell) and only
-    // narrow perpendicular to it, plus a full-size variant for gardens'
-    // instant auto-mow (mowAt() picks by this.player.dir; not something
-    // the mower's width actually cut cell-by-cell, so no narrowing there).
-    const MOWED_WIDTH = 12;
+    // The mower's own mowed swath is now drawn as a continuous stroke
+    // tracing the player's exact path (see mowAt()), not stamped per-cell —
+    // that's what makes it gap-free on turns, parallel lanes, and edges.
+    // The only remaining per-cell stamp is gardens' instant full-cell
+    // auto-mow (checkClusterCompletion()), which needs a plain texture.
     for (let h = 1; h <= 3; h++) {
       const { base, stripe } = DECK[h - 1];
-
-      const gv = this.make.graphics({ add: false }); // vertical travel: narrow x, full-height y
-      gv.fillStyle(base);
-      gv.fillRect(0, 0, MOWED_WIDTH, CELL);
-      gv.fillStyle(stripe, 0.5);
-      gv.fillRect(1, 0, 2, CELL);
-      gv.fillRect(7, 0, 2, CELL);
-      gv.lineStyle(1, 0x000000, 0.08);
-      gv.strokeRect(0, 0, MOWED_WIDTH, CELL);
-      gv.generateTexture(`mowed_${h}_v`, MOWED_WIDTH, CELL);
-      gv.destroy();
-
-      const gh = this.make.graphics({ add: false }); // horizontal travel: full-width x, narrow y
-      gh.fillStyle(base);
-      gh.fillRect(0, 0, CELL, MOWED_WIDTH);
-      gh.fillStyle(stripe, 0.5);
-      gh.fillRect(0, 1, CELL, 2);
-      gh.fillRect(0, 7, CELL, 2);
-      gh.lineStyle(1, 0x000000, 0.08);
-      gh.strokeRect(0, 0, CELL, MOWED_WIDTH);
-      gh.generateTexture(`mowed_${h}_h`, CELL, MOWED_WIDTH);
-      gh.destroy();
-
-      const gf = this.make.graphics({ add: false }); // full cell: gardens' auto-mow only
+      const gf = this.make.graphics({ add: false });
       gf.fillStyle(base);
       gf.fillRect(0, 0, CELL, CELL);
       gf.fillStyle(stripe, 0.5);
@@ -399,11 +365,17 @@ class GameScene extends Phaser.Scene {
       x: YARD_X * CELL + CELL / 2,
       y: YARD_Y * CELL + CELL / 2,
       dir: 'down',
-      moveDX: 0, moveDY: 1, // last movement vector, for mowAt()'s shape choice
       gfx: this.add.graphics(),
     };
     this.player.gfx.setDepth(2);
     this.drawPlayer();
+
+    // Continuous mow-stroke state: mowAt() traces a line from the last
+    // position to the current one every frame, so lastMowPos needs to
+    // start at the spawn point (an initial zero-length "stroke" is fine —
+    // it degrades to just the fillCircle cap).
+    this.mowStrokeGfx = this.make.graphics({ add: false });
+    this.lastMowPos   = { x: this.player.x, y: this.player.y };
   }
 
   drawPlayer() {
@@ -472,20 +444,6 @@ class GameScene extends Phaser.Scene {
       if (this.obstacleGrid[gr][gc] === 1) return true;
     }
     return false;
-  }
-
-  // Picks which mowed-texture shape (see buildMowedTextures()) matches the
-  // player's current travel vector. A true diagonal doesn't align with
-  // either the vertical or horizontal strip — consecutive diagonally-
-  // stepped cells only touch at a corner, not an edge, so the narrow
-  // strips left a visible gap between them — so this falls back to the
-  // full-size (gap-free, if not perfectly mower-width) texture whenever
-  // movement isn't mostly along one axis.
-  getMowShapeCode() {
-    const { moveDX: dx, moveDY: dy } = this.player;
-    const DIAGONAL_THRESHOLD = 0.3;
-    if (Math.abs(dx) > DIAGONAL_THRESHOLD && Math.abs(dy) > DIAGONAL_THRESHOLD) return 2; // full
-    return Math.abs(dx) >= Math.abs(dy) ? 1 : 0; // 1=h, 0=v
   }
 
   // ── Input ─────────────────────────────────────────────────────────────────
@@ -669,26 +627,34 @@ class GameScene extends Phaser.Scene {
     }
 
     const cellH = this.grid[gr][gc];
-    if (cellH !== 0 && this.deckHeight >= cellH) return;
+    if (cellH === 0 || this.deckHeight < cellH) {
+      // Trace a stroke from the exact previous position to the exact
+      // current one (not cell-quantized centers) at the mower's real
+      // width, with a round cap at the new point. Because each stroke
+      // shares its start point with the previous stroke's end point, and
+      // caps are always drawn, this structurally can't gap — on turns,
+      // parallel lanes, or yard edges — the way discrete per-cell stamps
+      // (which always centered a texture in the cell, ignoring the
+      // player's actual sub-cell offset) did.
+      const { base } = DECK[this.deckHeight - 1];
+      const g = this.mowStrokeGfx;
+      g.clear();
+      g.lineStyle(MOWED_WIDTH, base, 1);
+      g.lineBetween(this.lastMowPos.x, this.lastMowPos.y, px, py);
+      g.fillStyle(base, 1);
+      g.fillCircle(px, py, MOWED_WIDTH / 2);
+      this.mowedRT.draw(g, 0, 0);
+      this.mowedRT.render();
 
-    const firstMow = cellH === 0;
-    // Shape follows current travel direction, not just deck height — see
-    // buildMowedTextures() for why: it's how a straight pass tiles without
-    // gaps while still narrowing to the mower's actual width.
-    const shapeCode = this.getMowShapeCode();
-    this.grid[gr][gc]      = this.deckHeight;
-    this.cellShape[gr][gc] = shapeCode;
-    if (firstMow) this.mowedCount++;
-
-    const cx = (YARD_X + gc) * CELL + CELL / 2;
-    const cy = (YARD_Y + gr) * CELL + CELL / 2;
-    this.mowedRT.stamp(`mowed_${this.deckHeight}_${MOW_SHAPE_KEYS[shapeCode]}`, null, cx, cy);
-    this.mowedRT.render();
-
-    if (firstMow) {
-      this.checkClusterCompletion();
-      this.updateHUD();
+      const firstMow = cellH === 0;
+      this.grid[gr][gc] = this.deckHeight;
+      if (firstMow) {
+        this.mowedCount++;
+        this.checkClusterCompletion();
+        this.updateHUD();
+      }
     }
+    this.lastMowPos = { x: px, y: py };
   }
 
   checkClusterCompletion() {
@@ -756,22 +722,20 @@ class GameScene extends Phaser.Scene {
     return candidates[Phaser.Math.Between(0, candidates.length - 1)];
   }
 
-  rebuildMowedRT() {
-    this.mowedRT.clear();
-    for (let r = 0; r < YARD_ROWS; r++) {
-      for (let c = 0; c < YARD_COLS; c++) {
-        const h = this.grid[r][c];
-        if (h === 0) continue;
-        const cx = (YARD_X + c) * CELL + CELL / 2;
-        const cy = (YARD_Y + r) * CELL + CELL / 2;
-        // Re-stamp with whatever shape this cell was originally mowed with
-        // (garden auto-mow cells always used 'full') so a sprinkler revert
-        // doesn't change a cell's appearance, just its mowed state.
-        const shapeKey = this.obstacleGrid[r][c] ? 'full' : MOW_SHAPE_KEYS[this.cellShape[r][c]];
-        this.mowedRT.stamp(`mowed_${h}_${shapeKey}`, null, cx, cy);
-      }
-    }
+  // Erases the mowed appearance of a 2x2 cell block (used when a sprinkler
+  // reverts grass back to unmowed). Grid state (this.grid) is cleared by
+  // the caller; this only needs to punch the matching hole in the RT,
+  // since mowed grass is no longer built from re-stampable per-cell shapes.
+  eraseMowedBlock(gr, gc, blockCells) {
+    const wx = (YARD_X + gc) * CELL;
+    const wy = (YARD_Y + gr) * CELL;
+    const size = CELL * blockCells;
+    const eraseGfx = this.make.graphics({ add: false });
+    eraseGfx.fillStyle(0xffffff);
+    eraseGfx.fillRect(0, 0, size, size);
+    this.mowedRT.erase(eraseGfx, wx, wy);
     this.mowedRT.render();
+    eraseGfx.destroy();
   }
 
   animateSprinkler(wx, wy, gr, gc) {
@@ -812,7 +776,7 @@ class GameScene extends Phaser.Scene {
                 }
               }
             }
-            this.rebuildMowedRT();
+            this.eraseMowedBlock(gr, gc, 2);
             this.updateHUD();
           }
           stemH    = MAX_H * Math.max(0, 1 - (elapsed - RISE - SPRAY) / RETRACT);
