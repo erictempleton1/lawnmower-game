@@ -60,6 +60,10 @@ const DECK = [
   { base: 0x2e5c1e, stripe: 0x3a6e2a }, // 3 — tallest / darkest
 ];
 
+// Tree texture variants (see buildLevelTextures()) — one is picked at
+// random per contiguous tree cluster in buildObstacleLayer().
+const TREE_TYPES = ['tree_round', 'tree_evergreen', 'tree_willow'];
+
 // Pads an authored level map out to YARD_ROWS×YARD_COLS with plain grass,
 // centering the original layout. A no-op once a map is already the right
 // size, so it's safe to call again on scene.restart (which reuses the same
@@ -178,7 +182,10 @@ class GameScene extends Phaser.Scene {
   buildLevelTextures() {
     const S = CELL * 2; // 32px — fits a 2×2 cell block
 
-    // Tree — 32×32 pixel art
+    // Round / deciduous tree — 32×32 pixel art. All three tree variants
+    // below keep the trunk in the same y=18..31 footprint so the single
+    // shared trunk-collision offset in buildObstacleLayer() (ty + 8) lines
+    // up with all of them without needing a per-type adjustment.
     const tg = this.make.graphics({ add: false });
     tg.fillStyle(0x000000, 0.2);
     tg.fillEllipse(16, 29, 24, 6);          // ground shadow
@@ -196,8 +203,61 @@ class GameScene extends Phaser.Scene {
     tg.fillCircle(14, 9, 6);
     tg.fillStyle(0x5ac030, 0.5);
     tg.fillCircle(13, 7, 4);               // canopy highlight
-    tg.generateTexture('tree', S, S);
+    // Darker lobe-breaks around the rim so the silhouette doesn't read as
+    // a perfect circle.
+    tg.fillStyle(0x1a4a0a, 0.55);
+    tg.fillCircle(6, 16, 4);
+    tg.fillCircle(25, 17, 4);
+    tg.fillCircle(20, 4, 3);
+    tg.generateTexture('tree_round', S, S);
     tg.destroy();
+
+    // Evergreen / pine — three stacked triangle tiers, dark and pointed.
+    const te = this.make.graphics({ add: false });
+    te.fillStyle(0x000000, 0.2);
+    te.fillEllipse(16, 29, 22, 5);
+    te.fillStyle(0x5a3a1a);
+    te.fillRect(14, 18, 4, 13);             // trunk (same footprint as tree_round)
+    te.fillStyle(0x123a10);
+    te.fillTriangle(16, 8, 3, 25, 29, 25);  // bottom tier — widest, darkest
+    te.fillStyle(0x1e5c18);
+    te.fillTriangle(16, 2, 6, 17, 26, 17);  // middle tier
+    te.fillStyle(0x2f7a22);
+    te.fillTriangle(16, 0, 9, 10, 23, 10);  // top tier — smallest, brightest
+    te.fillStyle(0x4a9a33, 0.5);
+    te.fillTriangle(16, 0, 16, 19, 23, 10); // highlight sliver down one side
+    te.generateTexture('tree_evergreen', S, S);
+    te.destroy();
+
+    // Weeping willow — wide, light yellow-green canopy with thin drooping
+    // strands hanging past the trunk on both sides.
+    const tw = this.make.graphics({ add: false });
+    tw.fillStyle(0x000000, 0.2);
+    tw.fillEllipse(16, 29, 24, 6);
+    tw.fillStyle(0x6b5a2a);
+    tw.fillRect(14, 18, 4, 13);             // trunk (same footprint as tree_round)
+    tw.fillStyle(0x7a6a34, 0.4);
+    tw.fillRect(15, 18, 2, 13);             // trunk highlight
+    tw.fillStyle(0x5a7a28);
+    tw.fillEllipse(16, 9, 22, 12);          // canopy mass, sitting higher to leave room for strands
+    tw.fillStyle(0x7a9a3a);
+    tw.fillEllipse(15, 7, 16, 8);
+    tw.fillStyle(0x8caa4a, 0.7);
+    tw.fillEllipse(12, 5, 8, 4);            // canopy highlight
+    // Drooping strands — bright and thick enough to actually read against
+    // the canopy, hanging from its rim down past the trunk toward the
+    // ground on both sides (this is the detail that makes it a willow
+    // rather than just another round tree).
+    tw.lineStyle(2, 0x9ab84a, 0.95);
+    const strandXs = [3, 6, 10, 22, 26, 29];
+    for (let i = 0; i < strandXs.length; i++) {
+      const sx  = strandXs[i];
+      const sy  = 10 + (i % 2) * 3;
+      const len = 14 + (i % 3) * 3;
+      tw.lineBetween(sx, sy, sx + (i % 2 === 0 ? -1 : 1) * 2, sy + len);
+    }
+    tw.generateTexture('tree_willow', S, S);
+    tw.destroy();
 
     // Garden bed — 32×32 pixel art
     const gg = this.make.graphics({ add: false });
@@ -346,8 +406,13 @@ class GameScene extends Phaser.Scene {
           }
         }
 
-        // Stamp one 32×32 texture per 2×2 sub-block within the cluster
-        const key = type === 'T' ? 'tree' : 'garden';
+        // Stamp one 32×32 texture per 2×2 sub-block within the cluster.
+        // Trees pick one of a few variants per cluster (not per sub-block)
+        // so a single clump of trees reads as one coherent type instead of
+        // a mix of species crammed together.
+        const key = type === 'T'
+          ? TREE_TYPES[Phaser.Math.Between(0, TREE_TYPES.length - 1)]
+          : 'garden';
         for (let dr = 0; dr < cH; dr += 2) {
           for (let dc = 0; dc < cw; dc += 2) {
             const tx = (YARD_X + c + dc) * CELL + CELL;
