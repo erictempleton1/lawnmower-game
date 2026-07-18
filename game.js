@@ -54,19 +54,19 @@ const SPEED_VALS = [45, 80, 130]; // turtle / medium / rabbit
 
 // A wider yard (see above) means proportionally more grass at the same
 // 1-cell-per-pass mow rate, so completing a level would take longer purely
-// because of screen aspect ratio. Widen the mower's cutting swath (and
-// scale its sprite + trunk-collision radius to match) so a straight pass
-// covers about GROWTH_FACTOR cells across — moving in a line, a
-// (2*radius+1)-wide square block cuts a continuous strip of that width, so
-// total mow time stays roughly constant across devices. GROWTH_FACTOR 1
+// because of screen aspect ratio. Widen the mower's cutting swath so a
+// straight pass covers about GROWTH_FACTOR cells across — moving in a line,
+// a (2*radius+1)-wide square block cuts a continuous strip of that width,
+// so total mow time stays roughly constant across devices. GROWTH_FACTOR 1
 // (already-4:3 screens) reproduces the original single-cell mower exactly.
 const GROWTH_FACTOR   = Math.max(YARD_COLS / BASE_YARD_COLS, YARD_ROWS / BASE_YARD_ROWS);
 const SWATH_CELLS     = Math.max(1, Math.round(GROWTH_FACTOR));
 const MOW_LOOP_RADIUS = Math.round((SWATH_CELLS - 1) / 2);
-// Scales 1:1 with the swath's cell width (not a softer fraction of it) so
-// the mower visually grows in lockstep with the cut instead of lagging
-// behind it — the mowed patch should never read as wider than the mower.
-const MOWER_SCALE     = SWATH_CELLS;
+// Scales the mower, trees, gardens, squirrel, and sprinkler 1:1 with the
+// swath's cell width (not a softer fraction of it), so the whole world
+// grows in lockstep with the wider cut instead of the mower alone looking
+// oversized next to fixed-size trees/critters.
+const WORLD_SCALE     = SWATH_CELLS;
 
 // Lever layout — right border strip
 const LEVER_X     = (YARD_X + YARD_COLS) * CELL + 30; // deck lever
@@ -170,6 +170,7 @@ class GameScene extends Phaser.Scene {
     this.totalCells    = YARD_ROWS * YARD_COLS;
     this.sprinklerGfx  = this.add.graphics();
     this.sprinklerGfx.setDepth(4);
+    this.sprinklerGfx.setScale(WORLD_SCALE);
 
     this.setupPlayer();
     this.setupInput();
@@ -181,6 +182,7 @@ class GameScene extends Phaser.Scene {
 
     this.squirrelGfx = this.add.graphics();
     this.squirrelGfx.setDepth(4);
+    this.squirrelGfx.setScale(WORLD_SCALE);
 
     this.mowAt(this.player.x, this.player.y);
     this.scheduleSprinkler();
@@ -372,19 +374,24 @@ class GameScene extends Phaser.Scene {
             for (let dc = 0; dc < cw; dc += 2) {
               const tx = (YARD_X + c + dc) * CELL + CELL; // stamp center x
               const ty = (YARD_Y + r + dr) * CELL + CELL; // stamp center y
-              // Trunk center is 8px below the sprite center (matches the drawn trunk)
-              this.trunkPositions.push({ wx: tx, wy: ty + 8 });
+              // Trunk center is 8px below the sprite center pre-scale (matches
+              // the drawn trunk) — scaled by WORLD_SCALE since the stamp below
+              // is too, so collision tracks the visually bigger trunk.
+              this.trunkPositions.push({ wx: tx, wy: ty + 8 * WORLD_SCALE });
             }
           }
         }
 
-        // Stamp one 32×32 texture per 2×2 sub-block within the cluster
+        // Stamp one 32×32 texture per 2×2 sub-block within the cluster,
+        // scaled up with the rest of the world (see WORLD_SCALE) so trees/
+        // gardens don't look tiny next to a mower that's grown to match a
+        // wider swath.
         const key = type === 'T' ? 'tree' : 'garden';
         for (let dr = 0; dr < cH; dr += 2) {
           for (let dc = 0; dc < cw; dc += 2) {
             const tx = (YARD_X + c + dc) * CELL + CELL;
             const ty = (YARD_Y + r + dr) * CELL + CELL;
-            this.obstacleRT.stamp(key, null, tx, ty);
+            this.obstacleRT.stamp(key, null, tx, ty, { scale: WORLD_SCALE });
           }
         }
       }
@@ -403,12 +410,12 @@ class GameScene extends Phaser.Scene {
       gfx: this.add.graphics(),
     };
     this.player.gfx.setDepth(2);
-    // MOWER_SCALE grows with the yard (see constants) so a wider cutting
+    // WORLD_SCALE grows with the yard (see constants) so a wider cutting
     // swath is visually communicated by a bigger mower, not just an
     // invisible radius. Drawn at local (0,0) below so this scale + the
     // per-frame setPosition() do the positioning — roundPixels (pixelArt:
     // true) keeps it crisp without manual Math.round.
-    this.player.gfx.setScale(MOWER_SCALE);
+    this.player.gfx.setScale(WORLD_SCALE);
     this.drawPlayer();
   }
 
@@ -447,7 +454,7 @@ class GameScene extends Phaser.Scene {
     const gr = Math.floor((py - YARD_Y * CELL) / CELL);
     if (gc < 0 || gc >= YARD_COLS || gr < 0 || gr >= YARD_ROWS) return false;
     if (this.obstacleGrid[gr][gc] === 1) return true;
-    const trunkRadius = 6 * MOWER_SCALE;
+    const trunkRadius = 6 * WORLD_SCALE;
     for (const { wx, wy } of this.trunkPositions) {
       const ddx = px - wx, ddy = py - wy;
       if (ddx * ddx + ddy * ddy < trunkRadius * trunkRadius) return true;
@@ -922,6 +929,7 @@ class GameScene extends Phaser.Scene {
     let angle     = 0;
     let reverted  = false;
     const gfx     = this.sprinklerGfx;
+    gfx.setPosition(wx, wy); // fixed for the animation's duration; drawn at local (0,0) below
 
     const ev = this.time.addEvent({
       delay: 16,
@@ -959,18 +967,18 @@ class GameScene extends Phaser.Scene {
 
         // Stem
         gfx.fillStyle(0x999999);
-        gfx.fillRect(wx - 2, wy - stemH, 4, stemH);
+        gfx.fillRect(-2, -stemH, 4, stemH);
         // Head
         gfx.fillStyle(0xcccccc);
-        gfx.fillCircle(wx, wy - stemH, 3);
+        gfx.fillCircle(0, -stemH, 3);
 
         if (spraying) {
           for (let i = 0; i < 4; i++) {
-            const a = angle + (i * Math.PI / 2);
-            const tx = wx + Math.cos(a) * 20;
-            const ty = wy - stemH - 6 + Math.sin(a) * 8;
+            const a  = angle + (i * Math.PI / 2);
+            const tx = Math.cos(a) * 20;
+            const ty = -stemH - 6 + Math.sin(a) * 8;
             gfx.lineStyle(1, 0x66bbff, 0.85);
-            gfx.lineBetween(wx, wy - stemH, tx, ty);
+            gfx.lineBetween(0, -stemH, tx, ty);
             gfx.fillStyle(0x66bbff, 0.7);
             gfx.fillCircle(tx, ty, 1.5);
           }
@@ -1029,40 +1037,40 @@ class GameScene extends Phaser.Scene {
     const g = this.squirrelGfx;
     g.clear();
     const { x, y, dx, dy } = this.squirrel;
-    const bob = Math.floor(Date.now() / 80) % 2;
-    const by  = y + bob;
+    g.setPosition(x, y);
+    const by = Math.floor(Date.now() / 80) % 2; // vertical bob, local offset
 
     // Tail — opposite end from head, curls upward
     g.fillStyle(0xb36a30);
-    if (dx > 0)       { g.fillRect(x-6, by-2, 4, 2); g.fillRect(x-6, by-5, 2, 4); g.fillRect(x-5, by-7, 3, 2); }
-    else if (dx < 0)  { g.fillRect(x+2, by-2, 4, 2); g.fillRect(x+4, by-5, 2, 4); g.fillRect(x+2, by-7, 3, 2); }
-    else if (dy > 0)  { g.fillRect(x+2, by-4, 2, 4); g.fillRect(x+3, by-6, 3, 2); g.fillRect(x+5, by-5, 2, 3); }
-    else              { g.fillRect(x+2, by+1, 2, 4); g.fillRect(x+3, by+3, 3, 2); g.fillRect(x+5, by+1, 2, 3); }
+    if (dx > 0)       { g.fillRect(-6, by-2, 4, 2); g.fillRect(-6, by-5, 2, 4); g.fillRect(-5, by-7, 3, 2); }
+    else if (dx < 0)  { g.fillRect(2,  by-2, 4, 2); g.fillRect(4,  by-5, 2, 4); g.fillRect(2,  by-7, 3, 2); }
+    else if (dy > 0)  { g.fillRect(2,  by-4, 2, 4); g.fillRect(3,  by-6, 3, 2); g.fillRect(5,  by-5, 2, 3); }
+    else              { g.fillRect(2,  by+1, 2, 4); g.fillRect(3,  by+3, 3, 2); g.fillRect(5,  by+1, 2, 3); }
 
     // Body
     g.fillStyle(0x7a4422);
-    g.fillRect(x-3, by-2, 7, 4);
+    g.fillRect(-3, by-2, 7, 4);
 
     // Head — in direction of travel
     g.fillStyle(0x9a6040);
-    if (dx > 0)       g.fillRect(x+3,  by-4, 5, 4);
-    else if (dx < 0)  g.fillRect(x-8,  by-4, 5, 4);
-    else if (dy > 0)  g.fillRect(x-2,  by+2, 4, 5);
-    else              g.fillRect(x-2,  by-7, 4, 5);
+    if (dx > 0)       g.fillRect(3,  by-4, 5, 4);
+    else if (dx < 0)  g.fillRect(-8, by-4, 5, 4);
+    else if (dy > 0)  g.fillRect(-2, by+2, 4, 5);
+    else              g.fillRect(-2, by-7, 4, 5);
 
     // Ear
     g.fillStyle(0x5a3010);
-    if (dx > 0)       g.fillRect(x+5,  by-6, 2, 2);
-    else if (dx < 0)  g.fillRect(x-7,  by-6, 2, 2);
-    else if (dy > 0)  g.fillRect(x-1,  by+6, 2, 2);
-    else              g.fillRect(x-1,  by-9, 2, 2);
+    if (dx > 0)       g.fillRect(5,  by-6, 2, 2);
+    else if (dx < 0)  g.fillRect(-7, by-6, 2, 2);
+    else if (dy > 0)  g.fillRect(-1, by+6, 2, 2);
+    else              g.fillRect(-1, by-9, 2, 2);
 
     // Eye
     g.fillStyle(0x111111);
-    if (dx > 0)       g.fillRect(x+6,  by-3, 1, 1);
-    else if (dx < 0)  g.fillRect(x-5,  by-3, 1, 1);
-    else if (dy > 0)  g.fillRect(x+1,  by+5, 1, 1);
-    else              g.fillRect(x+1,  by-6, 1, 1);
+    if (dx > 0)       g.fillRect(6,  by-3, 1, 1);
+    else if (dx < 0)  g.fillRect(-5, by-3, 1, 1);
+    else if (dy > 0)  g.fillRect(1,  by+5, 1, 1);
+    else              g.fillRect(1,  by-6, 1, 1);
   }
 
   updateHUD() {
