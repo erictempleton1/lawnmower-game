@@ -301,6 +301,43 @@ class GameScene extends Phaser.Scene {
       }
     }
 
+    // Picket fence ringing the yard, straddling the boundary between the
+    // grass and the brown border — a shared cross-rail plus evenly spaced
+    // posts. All posts use the same top-down "small pointed peg" shape
+    // regardless of which side they're on, since a fence post looks the
+    // same from above no matter which edge it sits on.
+    const fenceX0 = YARD_X * CELL, fenceY0 = YARD_Y * CELL;
+    const fenceX1 = (YARD_X + YARD_COLS) * CELL, fenceY1 = (YARD_Y + YARD_ROWS) * CELL;
+    const PICKET_W = 3, PICKET_H = 9, PICKET_STEP = 8;
+    const railColor = 0xcabb98, postShade = 0xb8ac90, postBase = 0xece4d0, postHi = 0xfffdf5;
+
+    g.lineStyle(2, railColor, 0.9);
+    g.strokeRect(fenceX0, fenceY0, fenceX1 - fenceX0, fenceY1 - fenceY0);
+
+    const drawPicket = (cx, cy) => {
+      g.fillStyle(0x000000, 0.15);
+      g.fillEllipse(cx, cy + PICKET_H / 2 - 1, PICKET_W + 2, 3);            // shadow
+      g.fillStyle(postShade);
+      g.fillRect(cx - PICKET_W / 2, cy - PICKET_H / 2, PICKET_W, PICKET_H); // post
+      g.fillStyle(postBase);
+      g.fillRect(cx - PICKET_W / 2 + 1, cy - PICKET_H / 2, PICKET_W - 1, PICKET_H - 1);
+      g.fillTriangle(                                                       // pointed cap
+        cx - PICKET_W / 2, cy - PICKET_H / 2,
+        cx + PICKET_W / 2, cy - PICKET_H / 2,
+        cx, cy - PICKET_H / 2 - 3);
+      g.fillStyle(postHi, 0.6);
+      g.fillRect(cx - 1, cy - PICKET_H / 2, 1, PICKET_H - 2);               // highlight sliver
+    };
+
+    for (let x = fenceX0; x <= fenceX1; x += PICKET_STEP) {
+      drawPicket(x, fenceY0);
+      drawPicket(x, fenceY1);
+    }
+    for (let y = fenceY0 + PICKET_STEP; y < fenceY1; y += PICKET_STEP) {
+      drawPicket(fenceX0, y);
+      drawPicket(fenceX1, y);
+    }
+
     const rt = this.add.renderTexture(0, 0, W, H);
     rt.setOrigin(0, 0);
     rt.draw(g, 0, 0);
