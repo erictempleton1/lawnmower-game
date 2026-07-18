@@ -108,6 +108,11 @@ class GameScene extends Phaser.Scene {
 
   create() {
     this.grid           = Array.from({ length: YARD_ROWS }, () => new Uint8Array(YARD_COLS));
+    // Which mowed-texture variant each cell was cut with (0=vertical-travel
+    // strip, 1=horizontal-travel strip) — needed so rebuildMowedRT() (used
+    // after a sprinkler revert) can re-stamp each cell with the same shape
+    // it was originally mowed with, not just its height.
+    this.cellShape       = Array.from({ length: YARD_ROWS }, () => new Uint8Array(YARD_COLS));
     this.mowedCount     = 0;
     this.won            = false;
     this.deckHeight     = 2;
@@ -148,25 +153,52 @@ class GameScene extends Phaser.Scene {
 
   buildMowedTextures() {
     // Matches the mower's actual visual width (wheel-to-wheel span in
-    // drawPlayer(), 12px) rather than the full CELL (16px) — otherwise the
-    // mowed patch reads as wider than whatever mowed it. Textures are
-    // stamped at each cell's center with Phaser's default 0.5/0.5 origin,
-    // so a smaller texture naturally centers itself within the cell with
-    // an even margin on all sides — no change needed at the stamp() call
-    // sites themselves.
-    const MOWED_SIZE = 12;
+    // drawPlayer(), 12px) rather than the full CELL (16px), so a mowed
+    // patch never reads as wider than whatever mowed it — but only across
+    // the direction of travel. Narrowing *both* dimensions left a visible
+    // gap of unmowed grass between consecutive cells in a straight pass
+    // (each cell's patch was smaller than the cell on every side), so
+    // there are two travel-direction variants that stay full-CELL sized
+    // along the axis of movement (tiling seamlessly cell-to-cell) and only
+    // narrow perpendicular to it, plus a full-size variant for gardens'
+    // instant auto-mow (mowAt() picks by this.player.dir; not something
+    // the mower's width actually cut cell-by-cell, so no narrowing there).
+    const MOWED_WIDTH = 12;
     for (let h = 1; h <= 3; h++) {
       const { base, stripe } = DECK[h - 1];
-      const g = this.make.graphics({ add: false });
-      g.fillStyle(base);
-      g.fillRect(0, 0, MOWED_SIZE, MOWED_SIZE);
-      g.fillStyle(stripe, 0.5);
-      g.fillRect(1, 0, 2, MOWED_SIZE);
-      g.fillRect(7, 0, 2, MOWED_SIZE);
-      g.lineStyle(1, 0x000000, 0.08);
-      g.strokeRect(0, 0, MOWED_SIZE, MOWED_SIZE);
-      g.generateTexture('mowed_' + h, MOWED_SIZE, MOWED_SIZE);
-      g.destroy();
+
+      const gv = this.make.graphics({ add: false }); // vertical travel: narrow x, full-height y
+      gv.fillStyle(base);
+      gv.fillRect(0, 0, MOWED_WIDTH, CELL);
+      gv.fillStyle(stripe, 0.5);
+      gv.fillRect(1, 0, 2, CELL);
+      gv.fillRect(7, 0, 2, CELL);
+      gv.lineStyle(1, 0x000000, 0.08);
+      gv.strokeRect(0, 0, MOWED_WIDTH, CELL);
+      gv.generateTexture(`mowed_${h}_v`, MOWED_WIDTH, CELL);
+      gv.destroy();
+
+      const gh = this.make.graphics({ add: false }); // horizontal travel: full-width x, narrow y
+      gh.fillStyle(base);
+      gh.fillRect(0, 0, CELL, MOWED_WIDTH);
+      gh.fillStyle(stripe, 0.5);
+      gh.fillRect(0, 1, CELL, 2);
+      gh.fillRect(0, 7, CELL, 2);
+      gh.lineStyle(1, 0x000000, 0.08);
+      gh.strokeRect(0, 0, CELL, MOWED_WIDTH);
+      gh.generateTexture(`mowed_${h}_h`, CELL, MOWED_WIDTH);
+      gh.destroy();
+
+      const gf = this.make.graphics({ add: false }); // full cell: gardens' auto-mow only
+      gf.fillStyle(base);
+      gf.fillRect(0, 0, CELL, CELL);
+      gf.fillStyle(stripe, 0.5);
+      gf.fillRect(2, 0, 3, CELL);
+      gf.fillRect(10, 0, 2, CELL);
+      gf.lineStyle(1, 0x000000, 0.05);
+      gf.strokeRect(0, 0, CELL, CELL);
+      gf.generateTexture(`mowed_${h}_full`, CELL, CELL);
+      gf.destroy();
     }
   }
 
@@ -621,12 +653,17 @@ class GameScene extends Phaser.Scene {
     if (cellH !== 0 && this.deckHeight >= cellH) return;
 
     const firstMow = cellH === 0;
-    this.grid[gr][gc] = this.deckHeight;
+    // Shape follows current travel direction, not just deck height — see
+    // buildMowedTextures() for why: it's how a straight pass tiles without
+    // gaps while still narrowing to the mower's actual width.
+    const shapeCode = (this.player.dir === 'left' || this.player.dir === 'right') ? 1 : 0;
+    this.grid[gr][gc]      = this.deckHeight;
+    this.cellShape[gr][gc] = shapeCode;
     if (firstMow) this.mowedCount++;
 
     const cx = (YARD_X + gc) * CELL + CELL / 2;
     const cy = (YARD_Y + gr) * CELL + CELL / 2;
-    this.mowedRT.stamp('mowed_' + this.deckHeight, null, cx, cy);
+    this.mowedRT.stamp(`mowed_${this.deckHeight}_${shapeCode ? 'h' : 'v'}`, null, cx, cy);
     this.mowedRT.render();
 
     if (firstMow) {
@@ -646,7 +683,9 @@ class GameScene extends Phaser.Scene {
         this.mowedCount++;
         const cx = (YARD_X + c) * CELL + CELL / 2;
         const cy = (YARD_Y + r) * CELL + CELL / 2;
-        this.mowedRT.stamp('mowed_2', null, cx, cy);
+        // Full-size — this is hidden under the garden's own texture anyway
+        // (obstacle layer renders above the mowed layer), so shape is moot.
+        this.mowedRT.stamp('mowed_2_full', null, cx, cy);
       }
       this.mowedRT.render();
     }
@@ -706,7 +745,11 @@ class GameScene extends Phaser.Scene {
         if (h === 0) continue;
         const cx = (YARD_X + c) * CELL + CELL / 2;
         const cy = (YARD_Y + r) * CELL + CELL / 2;
-        this.mowedRT.stamp('mowed_' + h, null, cx, cy);
+        // Re-stamp with whatever shape this cell was originally mowed with
+        // (garden auto-mow cells always used 'full') so a sprinkler revert
+        // doesn't change a cell's appearance, just its mowed state.
+        const shapeKey = this.obstacleGrid[r][c] ? 'full' : (this.cellShape[r][c] ? 'h' : 'v');
+        this.mowedRT.stamp(`mowed_${h}_${shapeKey}`, null, cx, cy);
       }
     }
     this.mowedRT.render();
