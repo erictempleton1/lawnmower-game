@@ -40,7 +40,8 @@
       #controls-spacer {
         flex: 1 1 auto;
         display: flex;
-        align-items: center; /* vertically center the D-pad in the leftover space */
+        align-items: center;    /* vertically center the D-pad in the leftover space */
+        justify-content: center; /* and horizontally, across the full-width control zone */
       }
     }
 
@@ -122,13 +123,12 @@
       #dpad { display: block; }
     }
     @media (hover: none) and (pointer: coarse) and (orientation: portrait) {
-      /* Portrait: a flex child of #controls-spacer (vertically centered in
-         the ~1-inch leftover space) instead of fixed to the screen edge,
-         and sized down a notch to fit comfortably within it. */
+      /* Portrait: a flex child of #controls-spacer (centered in the
+         ~1-inch leftover space) instead of fixed to the screen edge, and
+         sized down a notch to fit comfortably within it. */
       #dpad {
         position: relative;
         left: auto; top: auto; bottom: auto;
-        margin-left: 18px;
         width: 108px;
         height: 108px;
       }
