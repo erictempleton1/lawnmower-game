@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Lawnmower Game</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #1a1a2e;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      overflow: hidden;
+    }
+    canvas { display: block; image-rendering: pixelated; }
+
+    /* ── UI overlay: scaled to match the canvas ─────────────────────────── */
+    #ui-layer {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 5;
+    }
+    /* This div lives in game-pixel coordinates; JS applies a transform
+       so it sits exactly on top of the Phaser canvas at whatever scale. */
+    #ui-canvas {
+      position: absolute;
+      width: 384px;   /* W = COLS * CELL = 24 * 16 */
+      height: 288px;  /* H = ROWS * CELL = 18 * 16 */
+      transform-origin: top left;
+    }
+    #ui-canvas .ui-text {
+      position: absolute;
+      font-family: Arial, Helvetica, sans-serif;
+      line-height: 1;
+      white-space: nowrap;
+    }
+    #hud-level  { left: 8px;  top: 6px; font-size: 9px; color: #ffcc44; font-weight: 700; }
+    #hud-mow    { left: 30px; top: 6px; font-size: 9px; color: #aaffaa; }
+    #hud-pct    { right: 46px; top: 6px; font-size: 10px; color: #ffffff; font-weight: 600; }
+    #deck-label  { left: 368px; top: 76px; font-size: 7px; color: #aaaaaa; transform: translateX(-50%); }
+    #notch-3     { left: 358px; top: 109px; font-size: 7px; }
+    #notch-2     { left: 358px; top: 185px; font-size: 7px; }
+    #notch-1     { left: 358px; top: 261px; font-size: 7px; }
+    #speed-label  { left: 348px; top: 76px;  font-size: 7px; color: #aaaaaa; transform: translateX(-50%); }
+    #speed-rabbit { left: 348px; top: 92px;  font-size: 9px; transform: translateX(-50%); }
+    #speed-turtle { left: 348px; top: 270px; font-size: 8px; transform: translateX(-50%); }
+    .tog        { left: 340px; width: 40px; text-align: center; font-size: 6px;
+                  color: #777777; line-height: 1.3; white-space: normal; }
+    .tog span   { display: block; font-size: 8px; font-weight: 700; }
+    #toggle-blade  { top: 25px; }
+    #toggle-sprink { top: 45px; }
+
+    /* ── Win overlay ─────────────────────────────────────────────────────── */
+    #win-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      justify-content: center;
+      align-items: center;
+      z-index: 10;
+      pointer-events: none;
+    }
+    #win-overlay.visible {
+      display: flex;
+      pointer-events: auto;
+    }
+    #win-box {
+      background: rgba(0, 18, 0, 0.93);
+      border: 2px solid #3a6a3a;
+      border-radius: 10px;
+      padding: 28px 40px;
+      text-align: center;
+      font-family: Arial, Helvetica, sans-serif;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.7);
+    }
+    #win-box h2 {
+      color: #88ff88;
+      font-size: 28px;
+      font-weight: 700;
+      margin: 0 0 10px;
+      letter-spacing: 1px;
+    }
+    #win-next   { color: #dddddd; font-size: 15px; margin: 0 0 8px; }
+    #win-action { color: #777777; font-size: 12px; margin: 0; }
+  </style>
+</head>
+<body>
+  <!-- UI text overlay (positioned over canvas by JS) -->
+  <div id="ui-layer">
+    <div id="ui-canvas">
+      <span id="hud-level"  class="ui-text">L1</span>
+      <span id="hud-mow"    class="ui-text">MOW</span>
+      <span id="hud-pct"    class="ui-text">0%</span>
+      <div id="toggle-blade"  class="ui-text tog">BLADE<span id="blade-val">ON</span></div>
+      <div id="toggle-sprink" class="ui-text tog">DIST<span id="dist-val">ON</span></div>
+      <span id="speed-label"  class="ui-text">SPD</span>
+      <span id="speed-rabbit" class="ui-text">🐇</span>
+      <span id="speed-turtle" class="ui-text">🐢</span>
+      <span id="deck-label"  class="ui-text">DECK</span>
+      <span id="notch-3"    class="ui-text">3</span>
+      <span id="notch-2"    class="ui-text">2</span>
+      <span id="notch-1"    class="ui-text">1</span>
+    </div>
+  </div>
+
+  <!-- Win screen -->
+  <div id="win-overlay">
+    <div id="win-box">
+      <h2>YARD DONE!</h2>
+      <p id="win-next"></p>
+      <p id="win-action"></p>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/phaser@4.2.1/dist/phaser.min.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
