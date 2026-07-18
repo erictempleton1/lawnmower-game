@@ -50,6 +50,10 @@ UI text lives in `#ui-canvas` (a `position:absolute` div over the canvas) to avo
 - `obstacleGrid[r][c]` — gardens only (full block, auto-mow via `checkClusterCompletion`)
 - `trunkPositions[]` — tree trunk pixel-radius collision (6px); player can enter and mow the cell but can't pass through
 - `obstacleClusters[]` — gardens only; auto-mow cells when all perimeter cells are mowed
+- `isNearGarden()` — garden collision samples a small cross of points around the player (±6px, matching the mower's visual half-width) rather than just the exact center, so the mower's sprite stops right at a garden's edge instead of visually overlapping into it before the single tracked point crosses the cell boundary
+
+## Mowed Texture Size
+`buildMowedTextures()` generates the `mowed_1/2/3` textures at 12px (not the full 16px `CELL`) — matches the mower's actual visual width (its wheel-to-wheel span in `drawPlayer()`), so a mowed patch never reads as wider than whatever mowed it. Stamped at each cell's center with Phaser's default 0.5/0.5 origin, so the smaller texture self-centers within the 16px cell — no changes needed at any `.stamp()` call site.
 
 ## No Toggle-able Settings
 Deck height, speed, blade, and distractions (sprinklers/squirrel) all used to be player-adjustable via a lever/toggle panel docked to the right border. That panel was removed — there is no in-game way to change these anymore. They're fixed at their old defaults: `this.deckHeight = 2` (set once in `create()`), `SPEED_STEP = 2` (medium), blade always on, distractions always on. If a "make it configurable again" request comes in, the lever UI code is recoverable from git history (commit `1b1fe23` and earlier had the full lever/toggle implementation).

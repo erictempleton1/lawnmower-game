@@ -8,7 +8,7 @@ const MAX_YARD_ROWS  = 60;  // safety ceiling — tall phones can genuinely need
 
 // Reserves room for the mobile D-pad below the canvas in portrait — must
 // stay in sync with #controls-spacer's real height in index.html.
-const CONTROL_RESERVE_PX = 170;
+const CONTROL_RESERVE_PX = 190;
 
 // On tall/narrow phone screens (portrait + touch), grow the yard's row
 // count so the grass fills available vertical space instead of the fixed
@@ -147,17 +147,25 @@ class GameScene extends Phaser.Scene {
   // ── Textures ─────────────────────────────────────────────────────────────
 
   buildMowedTextures() {
+    // Matches the mower's actual visual width (wheel-to-wheel span in
+    // drawPlayer(), 12px) rather than the full CELL (16px) — otherwise the
+    // mowed patch reads as wider than whatever mowed it. Textures are
+    // stamped at each cell's center with Phaser's default 0.5/0.5 origin,
+    // so a smaller texture naturally centers itself within the cell with
+    // an even margin on all sides — no change needed at the stamp() call
+    // sites themselves.
+    const MOWED_SIZE = 12;
     for (let h = 1; h <= 3; h++) {
       const { base, stripe } = DECK[h - 1];
       const g = this.make.graphics({ add: false });
       g.fillStyle(base);
-      g.fillRect(0, 0, CELL, CELL);
+      g.fillRect(0, 0, MOWED_SIZE, MOWED_SIZE);
       g.fillStyle(stripe, 0.5);
-      g.fillRect(2, 0, 3, CELL);
-      g.fillRect(10, 0, 2, CELL);
-      g.lineStyle(1, 0x000000, 0.05);
-      g.strokeRect(0, 0, CELL, CELL);
-      g.generateTexture('mowed_' + h, CELL, CELL);
+      g.fillRect(1, 0, 2, MOWED_SIZE);
+      g.fillRect(7, 0, 2, MOWED_SIZE);
+      g.lineStyle(1, 0x000000, 0.08);
+      g.strokeRect(0, 0, MOWED_SIZE, MOWED_SIZE);
+      g.generateTexture('mowed_' + h, MOWED_SIZE, MOWED_SIZE);
       g.destroy();
     }
   }
@@ -396,7 +404,7 @@ class GameScene extends Phaser.Scene {
     const gc = Math.floor((px - YARD_X * CELL) / CELL);
     const gr = Math.floor((py - YARD_Y * CELL) / CELL);
     if (gc < 0 || gc >= YARD_COLS || gr < 0 || gr >= YARD_ROWS) return false;
-    if (this.obstacleGrid[gr][gc] === 1) return true;
+    if (this.isNearGarden(px, py)) return true;
     for (const { wx, wy } of this.trunkPositions) {
       const ddx = px - wx, ddy = py - wy;
       if (ddx * ddx + ddy * ddy < 36) return true; // 6px radius around trunk
@@ -409,6 +417,22 @@ class GameScene extends Phaser.Scene {
       const sqc = Math.floor((this.squirrel.x - YARD_X * CELL) / CELL);
       const sqr = Math.floor((this.squirrel.y - YARD_Y * CELL) / CELL);
       if (gc === sqc && gr === sqr) return true;
+    }
+    return false;
+  }
+
+  isNearGarden(px, py) {
+    // Checking only the exact center point let the mower's ~12px-wide
+    // visual footprint overlap into a garden bed before the point itself
+    // crossed the cell boundary. Sampling a small cross of points around
+    // it (matching the mower's rough half-width) stops it right at the edge.
+    const MARGIN = 6;
+    const offsets = [[0, 0], [-MARGIN, 0], [MARGIN, 0], [0, -MARGIN], [0, MARGIN]];
+    for (const [dx, dy] of offsets) {
+      const gc = Math.floor((px + dx - YARD_X * CELL) / CELL);
+      const gr = Math.floor((py + dy - YARD_Y * CELL) / CELL);
+      if (gc < 0 || gc >= YARD_COLS || gr < 0 || gr >= YARD_ROWS) continue;
+      if (this.obstacleGrid[gr][gc] === 1) return true;
     }
     return false;
   }
