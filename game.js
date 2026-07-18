@@ -1,22 +1,40 @@
 // ─── Constants ───────────────────────────────────────────────────────────────
 const CELL = 16;
-const COLS = 24;
-const ROWS = 18;
 const YARD_X = 3;
 const YARD_Y = 3;
-const YARD_COLS = COLS - YARD_X * 2;   // 24
-const YARD_ROWS = ROWS - YARD_Y * 2;   // 16
-const W = COLS * CELL;                  // 480
-const H = ROWS * CELL;                  // 352
+const YARD_COLS      = 18;  // fixed — matches every level's authored width
+const BASE_YARD_ROWS = 12;  // authored level height
+const MAX_YARD_ROWS  = 60;  // safety ceiling — tall phones can genuinely need ~35-40 rows to fill the screen
+
+// Reserves room for the mobile D-pad below the canvas in portrait — must
+// stay in sync with #controls-spacer's real height in index.html.
+const CONTROL_RESERVE_PX = 130;
+
+// On tall/narrow phone screens (portrait + touch), grow the yard's row
+// count so the grass fills available vertical space instead of the fixed
+// 18x12 shape leaving big empty margins above/below. Landscape and desktop
+// are left untouched.
+function computeYardRows() {
+  const isPortraitTouch = window.matchMedia(
+    '(hover: none) and (pointer: coarse) and (orientation: portrait)'
+  ).matches;
+  if (!isPortraitTouch) return BASE_YARD_ROWS;
+
+  const availW = window.innerWidth;
+  const availH = window.innerHeight - CONTROL_RESERVE_PX;
+  const targetAspect = availW / Math.max(availH, 1);
+  const idealRows = Math.round((YARD_COLS + YARD_X * 2) / targetAspect) - YARD_Y * 2;
+  return Phaser.Math.Clamp(idealRows, BASE_YARD_ROWS, MAX_YARD_ROWS);
+}
+
+const YARD_ROWS = computeYardRows();
+const COLS = YARD_COLS + YARD_X * 2;
+const ROWS = YARD_ROWS + YARD_Y * 2;
+const W = COLS * CELL;
+const H = ROWS * CELL;
 const WIN_PCT   = 100;
 const SPEED_VALS = [45, 80, 130]; // turtle / medium / rabbit
-
-// Lever layout — right border strip
-const LEVER_X     = (YARD_X + YARD_COLS) * CELL + 30; // deck lever
-const SPD_LEVER_X = (YARD_X + YARD_COLS) * CELL + 10; // speed lever
-const LEVER_PNL   = { x: (YARD_X + YARD_COLS) * CELL + 4, y: 68, w: 40, h: 212 };
-const NOTCH_Y     = { 3: 112, 2: 188, 1: 264 };
-const SPEED_COLORS = [0x4477dd, 0x44aa77, 0xdd6633]; // turtle/medium/rabbit
+const SPEED_STEP = 2;              // fixed at medium — no speed toggle
 
 // ─── Palette ─────────────────────────────────────────────────────────────────
 const C = {
@@ -36,9 +54,26 @@ const DECK = [
   { base: 0x2e5c1e, stripe: 0x3a6e2a }, // 3 — tallest / darkest
 ];
 
-// Persist across scene restarts
-let g_distractionsEnabled = true;
-let g_speedStep         = 2;
+// Pads an authored level map out to YARD_ROWS×YARD_COLS with plain grass,
+// centering the original layout. A no-op once a map is already the right
+// size, so it's safe to call again on scene.restart (which reuses the same
+// already-normalized level objects).
+function normalizeMap(map) {
+  if (map.length === YARD_ROWS && map[0].length === YARD_COLS) return map;
+  const baseRows = map.length, baseCols = map[0].length;
+  const padTop  = Math.floor((YARD_ROWS - baseRows) / 2);
+  const padLeft = Math.floor((YARD_COLS - baseCols) / 2);
+  const out = [];
+  for (let r = 0; r < YARD_ROWS; r++) {
+    let row = '';
+    for (let c = 0; c < YARD_COLS; c++) {
+      const sr = r - padTop, sc = c - padLeft;
+      row += (sr >= 0 && sr < baseRows && sc >= 0 && sc < baseCols) ? map[sr][sc] : '.';
+    }
+    out.push(row);
+  }
+  return out;
+}
 
 // ─── Boot scene ───────────────────────────────────────────────────────────────
 // Loads levels/index.json then each level file, then starts GameScene.
@@ -65,7 +100,7 @@ class GameScene extends Phaser.Scene {
   constructor() { super('Game'); }
 
   init(data) {
-    this.allLevels    = data?.levels ?? [];
+    this.allLevels    = (data?.levels ?? []).map(lvl => ({ ...lvl, map: normalizeMap(lvl.map) }));
     this.currentLevel = data?.level  ?? 0;
   }
 
@@ -79,8 +114,7 @@ class GameScene extends Phaser.Scene {
     this.sprinklerCount   = 0;
     this.sprinklerTimer   = null;
     this.activeSprinkler  = null;
-    this.bladeOff       = false;
-    this.speedStep      = g_speedStep;
+    this.speedStep      = SPEED_STEP;
     this.squirrel       = { active: false };
     this.squirrelCount  = 0;
 
@@ -96,7 +130,6 @@ class GameScene extends Phaser.Scene {
     this.setupPlayer();
     this.setupInput();
     this.buildHUD();
-    this.buildLever();
     this.buildWinOverlay();
     this.syncUIOverlay();
     this.scale.on('resize', this.syncUIOverlay, this);
@@ -403,29 +436,7 @@ class GameScene extends Phaser.Scene {
         this.advanceLevel();
         return;
       }
-      if (p.x > (YARD_X + YARD_COLS) * CELL) {
-        if (p.y >= 25 && p.y < 43) {
-          this.toggleBlade();
-        } else if (p.y >= 45 && p.y < 63) {
-          this.toggleDistractions();
-        } else if (p.x < (SPD_LEVER_X + LEVER_X) / 2) {
-          // Speed lever tap — snap to closest notch
-          let bestS = this.speedStep, bestDist = Infinity;
-          for (let s = 1; s <= 3; s++) {
-            const d = Math.abs(p.y - NOTCH_Y[s]);
-            if (d < bestDist) { bestDist = d; bestS = s; }
-          }
-          this.setSpeed(bestS);
-        } else {
-          // Deck lever tap — snap to closest notch
-          let bestH = this.deckHeight, bestDist = Infinity;
-          for (let h = 1; h <= 3; h++) {
-            const d = Math.abs(p.y - NOTCH_Y[h]);
-            if (d < bestDist) { bestDist = d; bestH = h; }
-          }
-          this.setDeckHeight(bestH);
-        }
-      } else if (!this.isTouchDevice && p.x < W * 0.65) {
+      if (!this.isTouchDevice && p.x < W * 0.65) {
         this.joystick.active    = true;
         this.joystick.baseX     = p.x;
         this.joystick.baseY     = p.y;
@@ -463,10 +474,6 @@ class GameScene extends Phaser.Scene {
     this.input.keyboard.on('keydown-R', () => {
       if (this.won) this.advanceLevel();
     });
-    this.input.keyboard.on('keydown-B', () => this.toggleBlade());
-    this.input.keyboard.on('keydown-ONE',   () => this.setDeckHeight(1));
-    this.input.keyboard.on('keydown-TWO',   () => this.setDeckHeight(2));
-    this.input.keyboard.on('keydown-THREE', () => this.setDeckHeight(3));
   }
 
   setupDpad() {
@@ -503,148 +510,6 @@ class GameScene extends Phaser.Scene {
     jg.strokeCircle(baseX, baseY, 36);
     jg.fillStyle(0xffffff, 0.25);
     jg.fillCircle(stickX, stickY, 18);
-  }
-
-  // ── Lever UI ──────────────────────────────────────────────────────────────
-
-  buildLever() {
-    this.leverGfx  = this.add.graphics();
-    this.leverGfx.setDepth(10);
-    this.notchEls  = {
-      1: document.getElementById('notch-1'),
-      2: document.getElementById('notch-2'),
-      3: document.getElementById('notch-3'),
-    };
-    this.bladeEl  = document.getElementById('blade-val');
-    this.distEl  = document.getElementById('dist-val');
-    this.drawLever();
-  }
-
-  setDeckHeight(h) {
-    this.deckHeight = h;
-    this.drawLever();
-  }
-
-  setSpeed(s) {
-    this.speedStep = s;
-    g_speedStep    = s;
-    this.drawLever();
-  }
-
-  toggleBlade() {
-    this.bladeOff = !this.bladeOff;
-    this.drawLever();
-  }
-
-  toggleDistractions() {
-    g_distractionsEnabled = !g_distractionsEnabled;
-    if (!g_distractionsEnabled) {
-      if (this.sprinklerTimer) { this.sprinklerTimer.remove(); this.sprinklerTimer = null; }
-      if (this.squirrelTimer)  { this.squirrelTimer.remove();  this.squirrelTimer  = null; }
-
-    } else {
-      this.scheduleSprinkler();
-      this.scheduleSquirrel();
-    }
-    this.drawLever();
-  }
-
-  drawLever() {
-    const g  = this.leverGfx;
-    g.clear();
-    const p  = LEVER_PNL;
-    const lx = LEVER_X;
-    const sx = SPD_LEVER_X;
-
-    g.fillStyle(0x1a1a1a, 0.88);
-    g.fillRect(p.x, p.y, p.w, p.h);
-    g.lineStyle(1, 0x444444);
-    g.strokeRect(p.x, p.y, p.w, p.h);
-
-    // ── Deck rail + notches ───────────────────────────────────────────────
-    g.lineStyle(2, 0x444444);
-    g.lineBetween(lx, NOTCH_Y[3] - 6, lx, NOTCH_Y[1] + 6);
-    g.lineStyle(1, 0x222222);
-    g.lineBetween(lx - 1, NOTCH_Y[3] - 5, lx - 1, NOTCH_Y[1] + 5);
-
-    for (let h = 1; h <= 3; h++) {
-      const active = this.deckHeight === h;
-      g.lineStyle(1, active ? 0xdddddd : 0x555555);
-      g.lineBetween(lx - 4, NOTCH_Y[h], lx + 4, NOTCH_Y[h]);
-      if (this.notchEls)
-        this.notchEls[h].style.color = active ? '#ffffff' : '#555555';
-    }
-
-    // Deck knob
-    const hy = NOTCH_Y[this.deckHeight];
-    const bc = DECK[this.deckHeight - 1].base;
-    g.fillStyle(0x000000, 0.5);
-    g.fillRect(lx - 9, hy - 3, 18, 9);
-    g.fillStyle(bc);
-    g.fillRect(lx - 8, hy - 4, 16, 8);
-    g.fillStyle(0xffffff, 0.25);
-    g.fillRect(lx - 8, hy - 4, 16, 2);
-    g.fillStyle(0x000000, 0.3);
-    for (let i = -2; i <= 2; i += 2)
-      g.fillRect(lx + i, hy - 2, 1, 4);
-
-    // ── Speed rail + notches ──────────────────────────────────────────────
-    g.lineStyle(2, 0x444444);
-    g.lineBetween(sx, NOTCH_Y[3] - 6, sx, NOTCH_Y[1] + 6);
-    g.lineStyle(1, 0x222222);
-    g.lineBetween(sx - 1, NOTCH_Y[3] - 5, sx - 1, NOTCH_Y[1] + 5);
-
-    for (let s = 1; s <= 3; s++) {
-      const active = this.speedStep === s;
-      g.lineStyle(1, active ? 0xdddddd : 0x555555);
-      g.lineBetween(sx - 4, NOTCH_Y[s], sx + 4, NOTCH_Y[s]);
-    }
-
-    // Speed knob
-    const sy  = NOTCH_Y[this.speedStep];
-    const sc  = SPEED_COLORS[this.speedStep - 1];
-    g.fillStyle(0x000000, 0.5);
-    g.fillRect(sx - 7, sy - 3, 14, 9);
-    g.fillStyle(sc);
-    g.fillRect(sx - 6, sy - 4, 12, 8);
-    g.fillStyle(0xffffff, 0.25);
-    g.fillRect(sx - 6, sy - 4, 12, 2);
-
-    // ── Speed indicator rect: bottom = turtle, none = medium, top = rabbit ─
-    if (this.speedStep !== 2) {
-      const indX = p.x + 3;
-      const indW = p.w - 6;
-      const indY = this.speedStep === 1 ? p.y + p.h - 12 : p.y + 4;
-      g.fillStyle(sc);
-      g.fillRect(indX, indY, indW, 8);
-      g.fillStyle(0xffffff, 0.2);
-      g.fillRect(indX, indY, indW, 2);
-      g.lineStyle(1, 0x333333);
-      g.strokeRect(indX, indY, indW, 8);
-    }
-
-    // Toggle buttons above deck panel
-    const TH = 18, TX = p.x;
-    const T1Y = 25, T2Y = 45;
-
-    g.fillStyle(0x1a1a1a, 0.88);
-    g.fillRect(TX, T1Y, p.w, TH);
-    g.lineStyle(1, this.bladeOff ? 0x664400 : 0x2a6a2a);
-    g.strokeRect(TX, T1Y, p.w, TH);
-
-    g.fillStyle(0x1a1a1a, 0.88);
-    g.fillRect(TX, T2Y, p.w, TH);
-    g.lineStyle(1, g_distractionsEnabled ? 0x2a6a2a : 0x444444);
-    g.strokeRect(TX, T2Y, p.w, TH);
-
-    if (this.bladeEl) {
-      this.bladeEl.textContent = this.bladeOff ? 'OFF' : 'ON';
-      this.bladeEl.style.color = this.bladeOff ? '#cc7722' : '#66dd44';
-    }
-    if (this.distEl) {
-      this.distEl.textContent = g_distractionsEnabled ? 'ON' : 'OFF';
-      this.distEl.style.color = g_distractionsEnabled ? '#66dd44' : '#666666';
-    }
   }
 
   // ── HUD ───────────────────────────────────────────────────────────────────
@@ -714,7 +579,6 @@ class GameScene extends Phaser.Scene {
   // ── Mowing ────────────────────────────────────────────────────────────────
 
   mowAt(px, py) {
-    if (this.bladeOff) return;
     const gc = Math.floor((px - YARD_X * CELL) / CELL);
     const gr = Math.floor((py - YARD_Y * CELL) / CELL);
     if (gc < 0 || gc >= YARD_COLS || gr < 0 || gr >= YARD_ROWS) return;
@@ -767,7 +631,7 @@ class GameScene extends Phaser.Scene {
   // ── Sprinkler ─────────────────────────────────────────────────────────────
 
   scheduleSprinkler() {
-    if (!g_distractionsEnabled || this.sprinklerCount >= this.currentLevel + 1 || this.won) return;
+    if (this.sprinklerCount >= this.currentLevel + 1 || this.won) return;
     const pct         = this.mowedCount / this.totalCells;
     const speedFactor = 1 + (2 - this.speedStep) * 0.35; // 1.35 turtle → 1.0 mid → 0.65 rabbit
     const delay = (Phaser.Math.Between(3000, 6000)
@@ -777,7 +641,7 @@ class GameScene extends Phaser.Scene {
   }
 
   popSprinkler() {
-    if (this.won || !g_distractionsEnabled) return;
+    if (this.won) return;
     const pos = this.findSprinklerPos();
     if (!pos) { this.scheduleSprinkler(); return; }
 
@@ -901,13 +765,13 @@ class GameScene extends Phaser.Scene {
   // ── Squirrel ──────────────────────────────────────────────────────────────
 
   scheduleSquirrel() {
-    if (!g_distractionsEnabled || this.won || this.squirrelCount >= this.currentLevel + 1) return;
+    if (this.won || this.squirrelCount >= this.currentLevel + 1) return;
     this.squirrelTimer = this.time.delayedCall(
       Phaser.Math.Between(6000, 14000), this.launchSquirrel, [], this);
   }
 
   launchSquirrel() {
-    if (this.won || !g_distractionsEnabled) return;
+    if (this.won) return;
     this.squirrelCount++;
     const edge = Phaser.Math.Between(0, 3);
     const yL = YARD_X * CELL, yR = (YARD_X + YARD_COLS) * CELL;
@@ -1042,6 +906,28 @@ class GameScene extends Phaser.Scene {
   }
 }
 
+// ─── Responsive layout (portrait mobile only) ─────────────────────────────────
+// #game-container needs an explicit height matching the grown canvas (see
+// computeYardRows) so it doesn't just stretch to fill the whole body —
+// that's what #controls-spacer in index.html reserves room for the D-pad.
+// Runs once at load; the grid size doesn't live-recompute on resize/rotate.
+function applyResponsiveLayout() {
+  const isPortraitTouch = window.matchMedia(
+    '(hover: none) and (pointer: coarse) and (orientation: portrait)'
+  ).matches;
+  if (isPortraitTouch) {
+    const gameContainer = document.getElementById('game-container');
+    if (gameContainer) gameContainer.style.aspectRatio = `${W} / ${H}`;
+  }
+
+  const uiCanvas = document.getElementById('ui-canvas');
+  if (uiCanvas) {
+    uiCanvas.style.width  = W + 'px';
+    uiCanvas.style.height = H + 'px';
+  }
+}
+applyResponsiveLayout();
+
 // ─── Boot ────────────────────────────────────────────────────────────────────
 new Phaser.Game({
   type: Phaser.AUTO,
@@ -1051,7 +937,12 @@ new Phaser.Game({
   backgroundColor: '#1a1a2e',
   scale: {
     mode: Phaser.Scale.FIT,
-    autoCenter: Phaser.Scale.CENTER_BOTH,
+    // Horizontal-only centering: when #game-container has vertical slack
+    // (mobile portrait, after #controls-spacer eats into it), this pins the
+    // canvas to the top instead of splitting the gap above and below it —
+    // one contiguous control area at the bottom beats two dead strips.
+    autoCenter: Phaser.Scale.CENTER_HORIZONTALLY,
+    parent: 'game-container',
   },
   input: { activePointers: 3 },
   scene: [BootScene, GameScene],

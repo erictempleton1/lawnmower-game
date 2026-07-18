@@ -15,11 +15,11 @@ Pixel art top-down lawnmower game. Phaser 4.2.1, vanilla JS, no build step. Depl
 ## Grid Constants
 ```
 CELL = 16px
-COLS = 24, ROWS = 18 (full canvas)
 YARD_X = 3, YARD_Y = 3 (border offset)
-YARD_COLS = 18, YARD_ROWS = 12 (playable area)
-W = 384, H = 288
+YARD_COLS = 18 (fixed — matches every level's authored width)
+BASE_YARD_ROWS = 12 (authored level height)
 ```
+`YARD_ROWS` (and so `ROWS`/`H`) is **computed at load** by `computeYardRows()` — on portrait + touch devices it grows past 12 to fill available vertical space (screen height minus `CONTROL_RESERVE_PX`, ~1 inch, reserved for the D-pad), clamped to `MAX_YARD_ROWS`. Desktop and mobile landscape always get the fixed 12 rows. This is a one-time computation at page load; it does not live-recompute on resize or orientation change. `normalizeMap()` pads each authored level's map out to `YARD_ROWS` with plain grass, centering the original trees/gardens vertically — level files themselves stay a fixed 18×12 and never need to change. Only rows grow (never columns), so the mower stays a fixed single-cell size — there's no swath-widening or world-scaling here, by design (see git history around 2026-07-18 for why that combination was reverted).
 
 ## Render Layer Depths (bottom → top)
 | Depth | Object |
@@ -29,7 +29,7 @@ W = 384, H = 288
 | 2 | Player gfx |
 | 3 | Obstacle RT (trees + gardens) |
 | 4 | Sprinkler gfx, Squirrel gfx |
-| 10 | Joystick gfx, Lever gfx, HUD |
+| 10 | Joystick gfx, HUD |
 
 Player is at depth 2 so he walks visually under the tree canopy (depth 3).
 
@@ -51,11 +51,11 @@ UI text lives in `#ui-canvas` (a `position:absolute` div over the canvas) to avo
 - `trunkPositions[]` — tree trunk pixel-radius collision (6px); player can enter and mow the cell but can't pass through
 - `obstacleClusters[]` — gardens only; auto-mow cells when all perimeter cells are mowed
 
-## Persistence Globals
-```js
-let g_distractionsEnabled = true;  // sprinklers + squirrel toggle
-let g_speedStep = 2;               // 1=turtle, 2=medium, 3=rabbit
-```
+## No Toggle-able Settings
+Deck height, speed, blade, and distractions (sprinklers/squirrel) all used to be player-adjustable via a lever/toggle panel docked to the right border. That panel was removed — there is no in-game way to change these anymore. They're fixed at their old defaults: `this.deckHeight = 2` (set once in `create()`), `SPEED_STEP = 2` (medium), blade always on, distractions always on. If a "make it configurable again" request comes in, the lever UI code is recoverable from git history (commit `1b1fe23` and earlier had the full lever/toggle implementation).
+
+## Mobile Layout
+`#game-container` hosts the Phaser canvas (`scale.parent` in the game config); `#controls-spacer` (a sibling, sized via CSS flex) reserves room below it for the D-pad, real height only in portrait+touch (see media queries in `index.html`). `applyResponsiveLayout()` in `game.js` sets `#game-container`'s `aspect-ratio` from the computed `W`/`H` so Phaser's FIT scaling fills it with no dead space. The D-pad itself gets a smaller, portrait-specific size/layout (`108px`, nested inside `#controls-spacer`) vs. its default fixed-position landscape sizing (`150px`, floating over the canvas's side dead zone).
 
 ## Deploying
 Commit and push to `main` — GitHub Actions workflow in `.github/workflows/deploy.yml` handles the rest. Live at https://erictempleton1.github.io/lawnmower-game/

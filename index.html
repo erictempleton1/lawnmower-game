@@ -9,12 +9,40 @@
     body {
       background: #1a1a2e;
       display: flex;
-      justify-content: center;
-      align-items: center;
+      flex-direction: column;
       height: 100vh;
       overflow: hidden;
     }
     canvas { display: block; image-rendering: pixelated; }
+
+    /* #game-container holds the Phaser canvas; Phaser's FIT scale mode
+       fits + centers the canvas within whatever box this element resolves
+       to, so shrinking it (below) is how we carve out room for controls. */
+    #game-container {
+      flex: 1 1 auto;
+      min-height: 0;
+      position: relative;
+    }
+    /* Reserves space below the canvas for the D-pad. Empty by default
+       (desktop and mobile landscape already use the full window well, so
+       #game-container's flex:1 claims everything and this stays at 0).
+       Only mobile portrait needs it: the yard grid is sized (in game.js) so
+       its aspect ratio nearly fills the screen, with #game-container
+       pinned to exactly that rendered height via an aspect-ratio set by
+       game.js's applyResponsiveLayout() — this spacer becomes a real,
+       ~1-inch control zone with everything left over. */
+    #controls-spacer {
+      flex: 0 0 0px;
+      position: relative;
+    }
+    @media (hover: none) and (pointer: coarse) and (orientation: portrait) {
+      #game-container  { flex: 0 0 auto; width: 100%; }
+      #controls-spacer {
+        flex: 1 1 auto;
+        display: flex;
+        align-items: center; /* vertically center the D-pad in the leftover space */
+      }
+    }
 
     /* ── UI overlay: scaled to match the canvas ─────────────────────────── */
     #ui-layer {
@@ -24,11 +52,14 @@
       z-index: 5;
     }
     /* This div lives in game-pixel coordinates; JS applies a transform
-       so it sits exactly on top of the Phaser canvas at whatever scale. */
+       so it sits exactly on top of the Phaser canvas at whatever scale.
+       Width/height below are just a fallback — game.js's
+       applyResponsiveLayout() sets the real W/H inline, since the yard
+       grid (and so the canvas size) varies per device in portrait. */
     #ui-canvas {
       position: absolute;
-      width: 384px;   /* W = COLS * CELL = 24 * 16 */
-      height: 288px;  /* H = ROWS * CELL = 18 * 16 */
+      width: 384px;
+      height: 288px;
       transform-origin: top left;
     }
     #ui-canvas .ui-text {
@@ -40,18 +71,6 @@
     #hud-level  { left: 8px;  top: 6px; font-size: 9px; color: #ffcc44; font-weight: 700; }
     #hud-mow    { left: 30px; top: 6px; font-size: 9px; color: #aaffaa; }
     #hud-pct    { right: 46px; top: 6px; font-size: 10px; color: #ffffff; font-weight: 600; }
-    #deck-label  { left: 368px; top: 76px; font-size: 7px; color: #aaaaaa; transform: translateX(-50%); }
-    #notch-3     { left: 358px; top: 109px; font-size: 7px; }
-    #notch-2     { left: 358px; top: 185px; font-size: 7px; }
-    #notch-1     { left: 358px; top: 261px; font-size: 7px; }
-    #speed-label  { left: 348px; top: 76px;  font-size: 7px; color: #aaaaaa; transform: translateX(-50%); }
-    #speed-rabbit { left: 348px; top: 92px;  font-size: 9px; transform: translateX(-50%); }
-    #speed-turtle { left: 348px; top: 270px; font-size: 8px; transform: translateX(-50%); }
-    .tog        { left: 340px; width: 40px; text-align: center; font-size: 6px;
-                  color: #777777; line-height: 1.3; white-space: normal; }
-    .tog span   { display: block; font-size: 8px; font-weight: 700; }
-    #toggle-blade  { top: 25px; }
-    #toggle-sprink { top: 45px; }
 
     /* ── Win overlay ─────────────────────────────────────────────────────── */
     #win-overlay {
@@ -89,6 +108,8 @@
     /* ── Mobile D-pad: touch-only, hidden for mouse/desktop ─────────────── */
     #dpad {
       display: none;
+      /* Default (mobile landscape): fixed over the canvas's left/right dead
+         zone, same as before. */
       position: fixed;
       left: 18px;
       bottom: 18px;
@@ -99,6 +120,23 @@
     }
     @media (hover: none) and (pointer: coarse) {
       #dpad { display: block; }
+    }
+    @media (hover: none) and (pointer: coarse) and (orientation: portrait) {
+      /* Portrait: a flex child of #controls-spacer (vertically centered in
+         the ~1-inch leftover space) instead of fixed to the screen edge,
+         and sized down a notch to fit comfortably within it. */
+      #dpad {
+        position: relative;
+        left: auto; top: auto; bottom: auto;
+        margin-left: 18px;
+        width: 108px;
+        height: 108px;
+      }
+      #dpad .dpad-btn { width: 36px; height: 36px; font-size: 15px; line-height: 32px; }
+      #dpad #dpad-up    { left: 36px; top: 0; }
+      #dpad #dpad-left  { left: 0;    top: 36px; }
+      #dpad #dpad-right { left: 72px; top: 36px; }
+      #dpad #dpad-down  { left: 36px; top: 72px; }
     }
     .dpad-btn {
       position: absolute;
@@ -166,30 +204,27 @@
     <div id="loading-text">Loading mower&hellip;</div>
   </div>
 
+  <!-- Phaser injects the canvas here; sized/reserved via CSS above -->
+  <div id="game-container"></div>
+
+  <!-- Reserved control zone (real height only in mobile portrait); holds
+       the D-pad so it's anchored relative to it, not the viewport edge. -->
+  <div id="controls-spacer">
+    <div id="dpad">
+      <button id="dpad-up"    class="dpad-btn" aria-label="Up">▲</button>
+      <button id="dpad-left"  class="dpad-btn" aria-label="Left">◀</button>
+      <button id="dpad-right" class="dpad-btn" aria-label="Right">▶</button>
+      <button id="dpad-down"  class="dpad-btn" aria-label="Down">▼</button>
+    </div>
+  </div>
+
   <!-- UI text overlay (positioned over canvas by JS) -->
   <div id="ui-layer">
     <div id="ui-canvas">
       <span id="hud-level"  class="ui-text">L1</span>
       <span id="hud-mow"    class="ui-text">MOW</span>
       <span id="hud-pct"    class="ui-text">0%</span>
-      <div id="toggle-blade"  class="ui-text tog">BLADE<span id="blade-val">ON</span></div>
-      <div id="toggle-sprink" class="ui-text tog">DIST<span id="dist-val">ON</span></div>
-      <span id="speed-label"  class="ui-text">SPD</span>
-      <span id="speed-rabbit" class="ui-text">🐇</span>
-      <span id="speed-turtle" class="ui-text">🐢</span>
-      <span id="deck-label"  class="ui-text">DECK</span>
-      <span id="notch-3"    class="ui-text">3</span>
-      <span id="notch-2"    class="ui-text">2</span>
-      <span id="notch-1"    class="ui-text">1</span>
     </div>
-  </div>
-
-  <!-- Mobile D-pad (CSS-hidden on mouse/desktop) -->
-  <div id="dpad">
-    <button id="dpad-up"    class="dpad-btn" aria-label="Up">▲</button>
-    <button id="dpad-left"  class="dpad-btn" aria-label="Left">◀</button>
-    <button id="dpad-right" class="dpad-btn" aria-label="Right">▶</button>
-    <button id="dpad-down"  class="dpad-btn" aria-label="Down">▼</button>
   </div>
 
   <!-- Win screen -->
