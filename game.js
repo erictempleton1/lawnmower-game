@@ -385,9 +385,16 @@ class GameScene extends Phaser.Scene {
     this.wasd    = this.input.keyboard.addKeys('W,A,S,D');
     this.input.keyboard.addCapture('UP,DOWN,LEFT,RIGHT');
 
+    // Touch-primary devices (phones/tablets) get the on-screen D-pad instead
+    // of the drag joystick — matches the CSS media query that shows #dpad.
+    this.isTouchDevice = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+
     this.joystick    = { active: false, baseX: 0, baseY: 0, stickX: 0, stickY: 0, dx: 0, dy: 0, pointerId: null };
     this.joystickGfx = this.add.graphics();
     this.joystickGfx.setDepth(10);
+
+    this.dpad = { up: false, down: false, left: false, right: false };
+    this.setupDpad();
 
     this.input.on('pointerdown', (p) => {
       if (this.won) {
@@ -418,7 +425,7 @@ class GameScene extends Phaser.Scene {
           }
           this.setDeckHeight(bestH);
         }
-      } else if (p.x < W * 0.65) {
+      } else if (!this.isTouchDevice && p.x < W * 0.65) {
         this.joystick.active    = true;
         this.joystick.baseX     = p.x;
         this.joystick.baseY     = p.y;
@@ -464,6 +471,31 @@ class GameScene extends Phaser.Scene {
     this.input.keyboard.on('keydown-ONE',   () => this.setDeckHeight(1));
     this.input.keyboard.on('keydown-TWO',   () => this.setDeckHeight(2));
     this.input.keyboard.on('keydown-THREE', () => this.setDeckHeight(3));
+  }
+
+  setupDpad() {
+    const dirs = { 'dpad-up': 'up', 'dpad-down': 'down', 'dpad-left': 'left', 'dpad-right': 'right' };
+    for (const [id, dir] of Object.entries(dirs)) {
+      const el = document.getElementById(id);
+      if (!el) continue;
+      const press = (e) => {
+        e.preventDefault();
+        this.dpad[dir] = true;
+        el.classList.add('active');
+      };
+      const release = (e) => {
+        e.preventDefault();
+        this.dpad[dir] = false;
+        el.classList.remove('active');
+      };
+      // Assign directly (not addEventListener) — these DOM buttons live
+      // outside the canvas and persist across scene.restart(), so repeated
+      // create() calls would otherwise stack handlers bound to stale scenes.
+      el.onpointerdown  = press;
+      el.onpointerup    = release;
+      el.onpointerleave = release;
+      el.onpointercancel = release;
+    }
   }
 
   drawJoystick() {
@@ -959,6 +991,10 @@ class GameScene extends Phaser.Scene {
     if (c.up.isDown    || w.W.isDown) dy -= 1;
     if (c.down.isDown  || w.S.isDown) dy += 1;
     if (this.joystick.active) { dx += this.joystick.dx; dy += this.joystick.dy; }
+    if (this.dpad.left)  dx -= 1;
+    if (this.dpad.right) dx += 1;
+    if (this.dpad.up)    dy -= 1;
+    if (this.dpad.down)  dy += 1;
 
     const len = Math.sqrt(dx * dx + dy * dy);
     if (len > 0) { dx /= len; dy /= len; }

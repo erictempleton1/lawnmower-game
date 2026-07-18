@@ -85,6 +85,43 @@
     }
     #win-next   { color: #dddddd; font-size: 15px; margin: 0 0 8px; }
     #win-action { color: #777777; font-size: 12px; margin: 0; }
+
+    /* ── Mobile D-pad: touch-only, hidden for mouse/desktop ─────────────── */
+    #dpad {
+      display: none;
+      position: fixed;
+      left: 18px;
+      bottom: 18px;
+      width: 150px;
+      height: 150px;
+      z-index: 20;
+      pointer-events: none;
+    }
+    @media (hover: none) and (pointer: coarse) {
+      #dpad { display: block; }
+    }
+    .dpad-btn {
+      position: absolute;
+      width: 50px;
+      height: 50px;
+      background: rgba(255, 255, 255, 0.15);
+      border: 2px solid rgba(255, 255, 255, 0.4);
+      border-radius: 8px;
+      color: #fff;
+      font-size: 20px;
+      line-height: 46px;
+      text-align: center;
+      pointer-events: auto;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: none;
+    }
+    .dpad-btn.active { background: rgba(255, 255, 255, 0.4); }
+    #dpad-up    { left: 50px;  top: 0; }
+    #dpad-left  { left: 0;     top: 50px; }
+    #dpad-right { left: 100px; top: 50px; }
+    #dpad-down  { left: 50px;  top: 100px; }
   </style>
 </head>
 <body>
@@ -104,6 +141,14 @@
       <span id="notch-2"    class="ui-text">2</span>
       <span id="notch-1"    class="ui-text">1</span>
     </div>
+  </div>
+
+  <!-- Mobile D-pad (CSS-hidden on mouse/desktop) -->
+  <div id="dpad">
+    <button id="dpad-up"    class="dpad-btn" aria-label="Up">▲</button>
+    <button id="dpad-left"  class="dpad-btn" aria-label="Left">◀</button>
+    <button id="dpad-right" class="dpad-btn" aria-label="Right">▶</button>
+    <button id="dpad-down"  class="dpad-btn" aria-label="Down">▼</button>
   </div>
 
   <!-- Win screen -->
