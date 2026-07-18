@@ -47,6 +47,19 @@ const DISTRACTIONS_PER_LEVEL = 4;
 // wider than what actually cut it. Used by mowAt()'s continuous stroke.
 const MOWED_WIDTH = 12;
 
+// The stroke is drawn at MOWED_WIDTH centered on the player, so its edge
+// extends MOWED_WIDTH/2 past the tracked point. update()'s movement clamp
+// lets the player's exact center get within a couple px of the yard's
+// outer boundary — closer than that half-width — so without also clamping
+// the *paint* position, the stroke bleeds past the true edge into the
+// border. These insets keep the drawn stroke's outer edge flush with the
+// boundary at most, never past it, while leaving normal open-yard mowing
+// (anywhere farther from an edge than this) untouched.
+const MOW_DRAW_MIN_X = YARD_X * CELL + MOWED_WIDTH / 2;
+const MOW_DRAW_MAX_X = (YARD_X + YARD_COLS) * CELL - MOWED_WIDTH / 2;
+const MOW_DRAW_MIN_Y = YARD_Y * CELL + MOWED_WIDTH / 2;
+const MOW_DRAW_MAX_Y = (YARD_Y + YARD_ROWS) * CELL - MOWED_WIDTH / 2;
+
 // ─── Palette ─────────────────────────────────────────────────────────────────
 const C = {
   bg:         0x2d5a1b,
@@ -644,13 +657,20 @@ class GameScene extends Phaser.Scene {
     // parallel lanes, or yard edges — the way discrete per-cell stamps
     // (which always centered a texture in the cell, ignoring the player's
     // actual sub-cell offset) did.
+    // Clamp only the paint position (not px/py used for grid bookkeeping
+    // above, and not the player's actual movement/collision) so the
+    // stroke's half-width can't bleed past the yard's outer edge into the
+    // border — see MOW_DRAW_MIN/MAX_X/Y.
+    const dx = Phaser.Math.Clamp(px, MOW_DRAW_MIN_X, MOW_DRAW_MAX_X);
+    const dy = Phaser.Math.Clamp(py, MOW_DRAW_MIN_Y, MOW_DRAW_MAX_Y);
+
     const { base } = DECK[this.deckHeight - 1];
     const g = this.mowStrokeGfx;
     g.clear();
     g.lineStyle(MOWED_WIDTH, base, 1);
-    g.lineBetween(this.lastMowPos.x, this.lastMowPos.y, px, py);
+    g.lineBetween(this.lastMowPos.x, this.lastMowPos.y, dx, dy);
     g.fillStyle(base, 1);
-    g.fillCircle(px, py, MOWED_WIDTH / 2);
+    g.fillCircle(dx, dy, MOWED_WIDTH / 2);
     this.mowedRT.draw(g, 0, 0);
     this.mowedRT.render();
 
@@ -664,7 +684,7 @@ class GameScene extends Phaser.Scene {
         this.updateHUD();
       }
     }
-    this.lastMowPos = { x: px, y: py };
+    this.lastMowPos = { x: dx, y: dy };
   }
 
   checkClusterCompletion() {
