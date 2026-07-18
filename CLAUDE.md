@@ -22,6 +22,8 @@ BASE_YARD_COLS = 18, BASE_YARD_ROWS = 12 (authored level size, levels/level-0N.j
 
 Anything that docks to the right border strip (lever panel, BLADE/DIST toggles) is positioned from `LEVER_X`/`SPD_LEVER_X`/`LEVER_PNL.x`, which are derived from `YARD_COLS` — so it shifts automatically when the yard grows wider. The matching DOM labels in `index.html` get their `left` set by `applyResponsiveLayout()` in `game.js` (their CSS values are just an 18-column fallback).
 
+A wider/taller yard means more grass at a fixed mow rate, so `GROWTH_FACTOR` (how much bigger than the base 18×12 the yard got) drives `SWATH_CELLS`/`MOW_LOOP_RADIUS`, widening `mowAt()`'s mow footprint from a single cell to a `(2*MOW_LOOP_RADIUS+1)`-wide square block — moving in a line, that cuts a continuous strip of that width, keeping total mow time roughly constant across devices. `MOWER_SCALE` scales the player sprite (via `setScale()`, not baked-in draw coordinates — `drawPlayer()` draws at local `(0,0)` and moves via `setPosition()`) and the tree-trunk collision radius to match. `GROWTH_FACTOR` of 1 (already-4:3 screens) reproduces the original single-cell mower exactly — no behavior change there.
+
 ## Render Layer Depths (bottom → top)
 | Depth | Object |
 |-------|--------|

@@ -52,6 +52,19 @@ const H = ROWS * CELL;
 const WIN_PCT   = 100;
 const SPEED_VALS = [45, 80, 130]; // turtle / medium / rabbit
 
+// A wider yard (see above) means proportionally more grass at the same
+// 1-cell-per-pass mow rate, so completing a level would take longer purely
+// because of screen aspect ratio. Widen the mower's cutting swath (and
+// scale its sprite + trunk-collision radius to match) so a straight pass
+// covers about GROWTH_FACTOR cells across — moving in a line, a
+// (2*radius+1)-wide square block cuts a continuous strip of that width, so
+// total mow time stays roughly constant across devices. GROWTH_FACTOR 1
+// (already-4:3 screens) reproduces the original single-cell mower exactly.
+const GROWTH_FACTOR   = Math.max(YARD_COLS / BASE_YARD_COLS, YARD_ROWS / BASE_YARD_ROWS);
+const SWATH_CELLS     = Math.max(1, Math.round(GROWTH_FACTOR));
+const MOW_LOOP_RADIUS = Math.round((SWATH_CELLS - 1) / 2);
+const MOWER_SCALE     = 1 + MOW_LOOP_RADIUS * 0.35;
+
 // Lever layout — right border strip
 const LEVER_X     = (YARD_X + YARD_COLS) * CELL + 30; // deck lever
 const SPD_LEVER_X = (YARD_X + YARD_COLS) * CELL + 10; // speed lever
@@ -387,36 +400,41 @@ class GameScene extends Phaser.Scene {
       gfx: this.add.graphics(),
     };
     this.player.gfx.setDepth(2);
+    // MOWER_SCALE grows with the yard (see constants) so a wider cutting
+    // swath is visually communicated by a bigger mower, not just an
+    // invisible radius. Drawn at local (0,0) below so this scale + the
+    // per-frame setPosition() do the positioning — roundPixels (pixelArt:
+    // true) keeps it crisp without manual Math.round.
+    this.player.gfx.setScale(MOWER_SCALE);
     this.drawPlayer();
   }
 
   drawPlayer() {
-    const g   = this.player.gfx;
+    const g = this.player.gfx;
     g.clear();
-    const px  = Math.round(this.player.x);
-    const py  = Math.round(this.player.y);
+    g.setPosition(this.player.x, this.player.y);
     const dir = this.player.dir;
     const mox = dir === 'left' ? -10 : dir === 'right' ? 10 : 0;
     const moy = dir === 'up'   ? -10 : dir === 'down'  ? 10 : 0;
 
     g.fillStyle(C.mowerBody);
-    g.fillRect(px + mox - 5, py + moy - 4, 10, 8);
+    g.fillRect(mox - 5, moy - 4, 10, 8);
     g.fillStyle(C.mowerWheel);
-    g.fillRect(px + mox - 6, py + moy - 5, 3, 3);
-    g.fillRect(px + mox + 3, py + moy - 5, 3, 3);
-    g.fillRect(px + mox - 6, py + moy + 2, 3, 3);
-    g.fillRect(px + mox + 3, py + moy + 2, 3, 3);
+    g.fillRect(mox - 6, moy - 5, 3, 3);
+    g.fillRect(mox + 3, moy - 5, 3, 3);
+    g.fillRect(mox - 6, moy + 2, 3, 3);
+    g.fillRect(mox + 3, moy + 2, 3, 3);
     g.lineStyle(2, 0x884400);
-    g.lineBetween(px, py, px + mox * 0.55, py + moy * 0.55);
+    g.lineBetween(0, 0, mox * 0.55, moy * 0.55);
     g.fillStyle(C.pants);
-    g.fillRect(px - 3, py + 1, 6, 5);
+    g.fillRect(-3, 1, 6, 5);
     g.fillStyle(C.shirt);
-    g.fillRect(px - 3, py - 4, 6, 6);
+    g.fillRect(-3, -4, 6, 6);
     g.fillStyle(C.player);
-    g.fillRect(px - 2, py - 8, 5, 5);
+    g.fillRect(-2, -8, 5, 5);
     g.fillStyle(0x226611);
-    g.fillRect(px - 3, py - 10, 7, 3);
-    g.fillRect(px - 2, py - 12, 5, 3);
+    g.fillRect(-3, -10, 7, 3);
+    g.fillRect(-2, -12, 5, 3);
   }
 
   // ── Obstacle collision ────────────────────────────────────────────────────
@@ -426,9 +444,10 @@ class GameScene extends Phaser.Scene {
     const gr = Math.floor((py - YARD_Y * CELL) / CELL);
     if (gc < 0 || gc >= YARD_COLS || gr < 0 || gr >= YARD_ROWS) return false;
     if (this.obstacleGrid[gr][gc] === 1) return true;
+    const trunkRadius = 6 * MOWER_SCALE;
     for (const { wx, wy } of this.trunkPositions) {
       const ddx = px - wx, ddy = py - wy;
-      if (ddx * ddx + ddy * ddy < 36) return true; // 6px radius around trunk
+      if (ddx * ddx + ddy * ddy < trunkRadius * trunkRadius) return true;
     }
     if (this.activeSprinkler) {
       const { r, c } = this.activeSprinkler;
@@ -768,33 +787,46 @@ class GameScene extends Phaser.Scene {
 
   mowAt(px, py) {
     if (this.bladeOff) return;
-    const gc = Math.floor((px - YARD_X * CELL) / CELL);
-    const gr = Math.floor((py - YARD_Y * CELL) / CELL);
-    if (gc < 0 || gc >= YARD_COLS || gr < 0 || gr >= YARD_ROWS) return;
-    if (this.obstacleGrid[gr][gc]) return;
-    if (this.activeSprinkler) {
-      const { r, c } = this.activeSprinkler;
-      if (gr >= r && gr < r + 2 && gc >= c && gc < c + 2) return;
+    const gcCenter = Math.floor((px - YARD_X * CELL) / CELL);
+    const grCenter = Math.floor((py - YARD_Y * CELL) / CELL);
+
+    let stamped     = false;
+    let anyFirstMow = false;
+
+    // MOW_LOOP_RADIUS is 0 on already-4:3 screens, so this loop visits only
+    // the center cell — identical to the original single-cell mower.
+    for (let dr = -MOW_LOOP_RADIUS; dr <= MOW_LOOP_RADIUS; dr++) {
+      for (let dc = -MOW_LOOP_RADIUS; dc <= MOW_LOOP_RADIUS; dc++) {
+        const gr = grCenter + dr, gc = gcCenter + dc;
+        if (gr < 0 || gr >= YARD_ROWS || gc < 0 || gc >= YARD_COLS) continue;
+
+        if (this.obstacleGrid[gr][gc]) continue;
+        if (this.activeSprinkler) {
+          const { r, c } = this.activeSprinkler;
+          if (gr >= r && gr < r + 2 && gc >= c && gc < c + 2) continue;
+        }
+        if (this.squirrel.active) {
+          const sqc = Math.floor((this.squirrel.x - YARD_X * CELL) / CELL);
+          const sqr = Math.floor((this.squirrel.y - YARD_Y * CELL) / CELL);
+          if (gc === sqc && gr === sqr) continue;
+        }
+
+        const cellH = this.grid[gr][gc];
+        if (cellH !== 0 && this.deckHeight >= cellH) continue;
+
+        const firstMow = cellH === 0;
+        this.grid[gr][gc] = this.deckHeight;
+        if (firstMow) { this.mowedCount++; anyFirstMow = true; }
+
+        const cx = (YARD_X + gc) * CELL + CELL / 2;
+        const cy = (YARD_Y + gr) * CELL + CELL / 2;
+        this.mowedRT.stamp('mowed_' + this.deckHeight, null, cx, cy);
+        stamped = true;
+      }
     }
-    if (this.squirrel.active) {
-      const sqc = Math.floor((this.squirrel.x - YARD_X * CELL) / CELL);
-      const sqr = Math.floor((this.squirrel.y - YARD_Y * CELL) / CELL);
-      if (gc === sqc && gr === sqr) return;
-    }
 
-    const cellH = this.grid[gr][gc];
-    if (cellH !== 0 && this.deckHeight >= cellH) return;
-
-    const firstMow = cellH === 0;
-    this.grid[gr][gc] = this.deckHeight;
-    if (firstMow) this.mowedCount++;
-
-    const cx = (YARD_X + gc) * CELL + CELL / 2;
-    const cy = (YARD_Y + gr) * CELL + CELL / 2;
-    this.mowedRT.stamp('mowed_' + this.deckHeight, null, cx, cy);
-    this.mowedRT.render();
-
-    if (firstMow) {
+    if (stamped) this.mowedRT.render();
+    if (anyFirstMow) {
       this.checkClusterCompletion();
       this.updateHUD();
     }
