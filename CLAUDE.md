@@ -33,8 +33,6 @@ BASE_YARD_ROWS = 12 (authored level height)
 
 Player is at depth 2 so he walks visually under the tree canopy (depth 3).
 
-The picket fence ringing the yard is baked into the depth-0 Background RT (`buildBackground()`) — a shared cross-rail (`strokeRect`) plus evenly spaced posts (same top-down "pointed peg" shape on all 4 sides, since a post looks the same from above regardless of which edge it's on), straddling the boundary between the grass and the brown border. Purely decorative, no collision.
-
 ## Phaser 4 Gotchas
 - **RenderTexture**: must call `.render()` after all `.stamp()` calls or nothing appears
 - **Full-screen RT**: always `rt.setOrigin(0, 0)` — default origin is center which offsets everything
