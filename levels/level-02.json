@@ -1,6 +1,7 @@
 {
   "name": "Level 2",
   "mowPattern": "stripe",
+  "mowContrast": 0.9,
   "map": [
     "..................",
     "..TT..BBB..GG..TT.",

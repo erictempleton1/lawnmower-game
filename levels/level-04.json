@@ -1,6 +1,7 @@
 {
   "name": "Level 4",
   "mowPattern": "diagonal",
+  "mowContrast": 0.9,
   "map": [
     "TT...TT.........TT",
     "TT...TT..PPPPP..TT",

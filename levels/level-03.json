@@ -1,6 +1,7 @@
 {
   "name": "Level 3",
   "mowPattern": "rings",
+  "mowContrast": 0.9,
   "map": [
     "..................",
     ".GG..TT..BBB..GG..",

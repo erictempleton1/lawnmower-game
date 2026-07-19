@@ -444,18 +444,24 @@ class GameScene extends Phaser.Scene {
       gf.generateTexture(`mowed_${h}_full`, CELL, CELL);
       gf.destroy();
 
-      // A subtly darker variant of the same texture (~6%) — used by levels
-      // with a levelData.mowPattern set (see mowedTextureKey()) to alternate
-      // the mowed look (column stripes, concentric rings, checkerboard,
-      // diagonal bands, ...) instead of a flat uniform mow. A stronger 15%
-      // shade was tried first but read as busy/noisy for the
-      // higher-frequency patterns (checker/diagonal alternate every 1-2
-      // cells in both directions); this gentler contrast reads as a calm
-      // accent for all of them, including the coarser stripe/rings.
+      // A subtly darker variant of the same texture — used by levels with a
+      // levelData.mowPattern set (see mowedTextureKey()) to alternate the
+      // mowed look (column stripes, concentric rings, checkerboard,
+      // diagonal bands, ...) instead of a flat uniform mow. How much darker
+      // is the level's opt-in mowContrast field (a shadeColor() factor —
+      // lower is darker/more pronounced, 1 is no difference at all),
+      // defaulting to 0.9 when omitted. A flat 15% (0.85) was the original
+      // value, tuned for stripe/rings' coarse, wide bands; once
+      // checker/diagonal were added (alternating every 1-2 cells in both
+      // grid directions, not just one) that same contrast read as
+      // busy/noisy, so it came down to 0.94 — then bumped back up slightly
+      // to 0.9 since 0.94 read as barely-there. Per-level so any future
+      // pattern/level combination can be tuned without touching the others.
+      const contrast = this.levelData.mowContrast ?? 0.9;
       const gfAlt = this.make.graphics({ add: false });
-      gfAlt.fillStyle(shadeColor(base, 0.94));
+      gfAlt.fillStyle(shadeColor(base, contrast));
       gfAlt.fillRect(0, 0, CELL, CELL);
-      gfAlt.fillStyle(shadeColor(stripe, 0.94), 0.5);
+      gfAlt.fillStyle(shadeColor(stripe, contrast), 0.5);
       gfAlt.fillRect(2, 0, 3, CELL);
       gfAlt.fillRect(10, 0, 2, CELL);
       gfAlt.lineStyle(1, 0x000000, 0.05);

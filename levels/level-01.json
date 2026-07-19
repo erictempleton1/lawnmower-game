@@ -1,6 +1,7 @@
 {
   "name": "Level 1",
   "mowPattern": "checker",
+  "mowContrast": 0.9,
   "map": [
     "..................",
     "..BBB..TT..GG..BBB",
