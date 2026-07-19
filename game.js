@@ -291,6 +291,7 @@ class GameScene extends Phaser.Scene {
     this.bird           = { active: false };
     this.deer           = { active: false };
     this.fox            = { active: false };
+    this.goat           = { active: false };
     // Gated on the intro modal for the very first level only — see
     // buildIntroOverlay(). Already-dismissed (g_introShown) on every
     // level after that, so play starts immediately without re-showing it.
@@ -301,11 +302,11 @@ class GameScene extends Phaser.Scene {
     this.buildMowedLayer();
     this.buildObstacleLayer();
 
-    // Pond cells are permanent water — they never get mowed (unlike
-    // gardens/bushes, which eventually auto-mow), so they're excluded from
-    // the denominator entirely rather than counting toward a total the
-    // player could never actually reach.
-    this.totalCells = YARD_ROWS * YARD_COLS - this.pondCellCount;
+    // Pond cells are permanent water and boulder cells permanent rock —
+    // neither ever gets mowed (unlike gardens/bushes, which eventually
+    // auto-mow), so both are excluded from the denominator entirely rather
+    // than counting toward a total the player could never actually reach.
+    this.totalCells = YARD_ROWS * YARD_COLS - this.pondCellCount - this.rockCellCount;
 
     this.setupPlayer();
     this.setupInput();
@@ -403,6 +404,8 @@ class GameScene extends Phaser.Scene {
     this.deerGfx.setDepth(4);
     this.foxGfx = this.add.graphics();
     this.foxGfx.setDepth(4);
+    this.goatGfx = this.add.graphics();
+    this.goatGfx.setDepth(4);
     this.dogGfx = this.add.graphics();
     this.dogGfx.setDepth(4);
     this.drawDog();
@@ -414,8 +417,7 @@ class GameScene extends Phaser.Scene {
     if (g_introShown) {
       this.scheduleSquirrel();
       this.scheduleBird();
-      this.scheduleDeer();
-      this.scheduleFox();
+      this.schedulePeekers();
     }
 
     document.getElementById('loading-screen')?.classList.add('hidden');
@@ -482,6 +484,8 @@ class GameScene extends Phaser.Scene {
   // - 'diagonal' (level-04.json): alternates by (column + row) in 2-cell-
   //   wide bands — diagonal stripes running at 45°, same band thickness as
   //   'stripe' just along the other axis.
+  // - 'hstripe' (level-05.json): alternates by grid-row parity — horizontal
+  //   bands, 'stripe' turned 90°: passes running across the valley floor.
   // Any other/missing value renders a flat, uniform mow (unchanged from
   // before mow patterns existed).
   mowedTextureKey(h, gc, gr) {
@@ -497,6 +501,8 @@ class GameScene extends Phaser.Scene {
       alt = (gc + gr) % 2 === 1;
     } else if (this.levelData.mowPattern === 'diagonal') {
       alt = Math.floor((gc + gr) / 2) % 2 === 1;
+    } else if (this.levelData.mowPattern === 'hstripe') {
+      alt = gr % 2 === 1;
     }
     return `mowed_${h}_full${alt ? '_alt' : ''}`;
   }
@@ -571,6 +577,31 @@ class GameScene extends Phaser.Scene {
     tb.fillCircle(6, 4, 2.5);               // highlight
     tb.generateTexture('bush', CELL, CELL);
     tb.destroy();
+
+    // Boulder — 16×16, per-cell like bushes ('R' in level maps, introduced
+    // with Level 5's mountain valley). Permanent rock: blocks like a
+    // garden/pond cell but never auto-mows (its cells are excluded from
+    // totalCells, same treatment as pond water). Rounded gray rock with a
+    // lit top-left face, a hairline crack, and grass tufts at the base so
+    // it sits in the meadow rather than floating on it.
+    const rb = this.make.graphics({ add: false });
+    rb.fillStyle(0x000000, 0.18);
+    rb.fillEllipse(8, 14, 13, 3);           // ground shadow
+    rb.fillStyle(0x4a4f58);
+    rb.fillCircle(8, 9, 7);                 // rock body
+    rb.fillRect(2, 9, 12, 5);               // flatten the base
+    rb.fillStyle(0x5d636e);
+    rb.fillCircle(6, 7, 5);                 // lit face
+    rb.fillStyle(0x6e7580, 0.8);
+    rb.fillCircle(5, 5, 2.5);               // top highlight
+    rb.lineStyle(1, 0x33373e, 0.7);         // crack
+    rb.lineBetween(9, 4, 11, 9);
+    rb.lineBetween(11, 9, 10, 12);
+    rb.fillStyle(0x2a4a18, 0.9);            // grass tufts at the base
+    rb.fillRect(2, 12, 1, 3);
+    rb.fillRect(13, 11, 1, 3);
+    rb.generateTexture('boulder', CELL, CELL);
+    rb.destroy();
 
     // Garden bed — 32×32 pixel art
     const gg = this.make.graphics({ add: false });
@@ -685,6 +716,13 @@ class GameScene extends Phaser.Scene {
   }
 
   buildBackground() {
+    // Border decor is themed per level: the default forest edge
+    // (bg_tree/bg_pine rows), or mountain peaks/foothills when the level
+    // sets "theme": "mountain" (level-05.json's alpine valley). The shared
+    // parts — wild grass base, accent blades, wildflowers — stay the same
+    // either way (they read as alpine meadow just as well as forest floor).
+    const isMountain = this.levelData.theme === 'mountain';
+
     // Self-contained (not in buildLevelTextures()) since this runs before
     // that does — the unmowable border gets its own bigger, more muted
     // decorative tree, scattered purely for atmosphere with no collision.
@@ -721,6 +759,41 @@ class GameScene extends Phaser.Scene {
     bp.generateTexture('bg_pine', BG_PINE_S, BG_PINE_S);
     bp.destroy();
 
+    // Mountain-theme border textures: a big snow-capped peak and a smaller
+    // snowless foothill, same muted-scenery philosophy as bg_tree/bg_pine.
+    // Only generated when a level actually uses them.
+    if (isMountain) {
+      const MT_W = 56, MT_H = 52;
+      const bm = this.make.graphics({ add: false });
+      bm.fillStyle(0x000000, 0.2);
+      bm.fillEllipse(MT_W / 2, MT_H - 4, MT_W * 0.8, 6);
+      // Rock body: dark slate, with a lighter lit face on the left half
+      bm.fillStyle(0x3d434e);
+      bm.fillTriangle(MT_W / 2, 2, 2, MT_H - 4, MT_W - 2, MT_H - 4);
+      bm.fillStyle(0x525a68);
+      bm.fillTriangle(MT_W / 2, 2, 10, MT_H - 4, MT_W / 2 + 3, MT_H - 4);
+      // Snow cap with a jagged bottom edge (small dangles below the line)
+      bm.fillStyle(0xe8eef2);
+      bm.fillTriangle(MT_W / 2, 2, MT_W / 2 - 9, 19, MT_W / 2 + 9, 19);
+      bm.fillRect(MT_W / 2 - 8, 17, 4, 4);
+      bm.fillRect(MT_W / 2 + 1, 17, 3, 5);
+      bm.fillStyle(0xc6d0d8); // shaded right half of the cap
+      bm.fillTriangle(MT_W / 2, 2, MT_W / 2 + 4, 12, MT_W / 2 + 9, 19);
+      bm.generateTexture('bg_mountain', MT_W, MT_H);
+      bm.destroy();
+
+      const FH_W = 40, FH_H = 30;
+      const bf = this.make.graphics({ add: false });
+      bf.fillStyle(0x000000, 0.18);
+      bf.fillEllipse(FH_W / 2, FH_H - 3, FH_W * 0.75, 5);
+      bf.fillStyle(0x454c58);
+      bf.fillTriangle(FH_W / 2, 3, 2, FH_H - 3, FH_W - 2, FH_H - 3);
+      bf.fillStyle(0x59616f);
+      bf.fillTriangle(FH_W / 2, 3, 8, FH_H - 3, FH_W / 2 + 2, FH_H - 3);
+      bf.generateTexture('bg_mountain_small', FH_W, FH_H);
+      bf.destroy();
+    }
+
     const g = this.make.graphics({ add: false });
 
     // Border: a darker, wilder green (unmown) instead of flat dirt, so it
@@ -751,6 +824,17 @@ class GameScene extends Phaser.Scene {
           const alpha = 0.35 + Math.random() * 0.25;
           g.fillStyle(0x1a4010, alpha);
           g.fillRect(bx, cy + CELL - bh - 1, 1, bh);
+        }
+        // Alpine meadow: tiny flowers scattered through the yard's own
+        // unmowed grass on mountain levels. Baked into the depth-0
+        // background like the blades, so mowing over a cell covers them —
+        // reads as cutting through a wildflower meadow.
+        if (isMountain && Math.random() < 0.3) {
+          const fx = cx + 3 + Math.floor(Math.random() * (CELL - 6));
+          const fy = cy + 3 + Math.floor(Math.random() * (CELL - 6));
+          const alpineColors = [0xffffff, 0xcc88ff, 0xffdd66];
+          g.fillStyle(alpineColors[Phaser.Math.Between(0, alpineColors.length - 1)], 0.85);
+          g.fillRect(fx, fy, 2, 2);
         }
       }
     }
@@ -801,6 +885,7 @@ class GameScene extends Phaser.Scene {
     // or any residual overlap.
     const margin = 20;
     const bgTrees = [];
+    if (!isMountain) {
     for (let x = margin; x < W - margin; x += 66)
       bgTrees.push({ key: 'bg_tree', x: x + Phaser.Math.Between(-4, 4), y: margin });
     for (let x = margin; x < W - margin; x += 66)
@@ -843,6 +928,44 @@ class GameScene extends Phaser.Scene {
       for (let x = margin; x < W - margin; x += 66)
         bgTrees.push({ key: 'bg_pine', x: x + Phaser.Math.Between(-4, 4), y: innerPineYB + Phaser.Math.Between(-4, 4) });
     }
+    } else {
+    // Mountain border: an outer rim of big snow-capped peaks around all 4
+    // sides, smaller foothills staggered half a step between/inside them,
+    // and a sparse pine treeline nearest the yard on top/bottom where the
+    // taller border leaves room — the same outer/inner layering idea as
+    // the forest theme, swapping species for geology. Shares the bgTrees
+    // array and its y-sort so nearer scenery correctly occludes farther.
+    for (let x = margin; x < W - margin; x += 60)
+      bgTrees.push({ key: 'bg_mountain', x: x + Phaser.Math.Between(-4, 4), y: margin - 2 });
+    for (let x = margin; x < W - margin; x += 60)
+      bgTrees.push({ key: 'bg_mountain', x: x + Phaser.Math.Between(-4, 4), y: H - margin + 2 });
+    for (let y = yardT + margin; y < yardB - margin; y += 60)
+      bgTrees.push({ key: 'bg_mountain', x: margin - 2, y: y + Phaser.Math.Between(-4, 4) });
+    for (let y = yardT + margin; y < yardB - margin; y += 60)
+      bgTrees.push({ key: 'bg_mountain', x: W - margin + 2, y: y + Phaser.Math.Between(-4, 4) });
+    // Foothills between the peaks, tucked toward the yard
+    for (let x = margin + 30; x < W - margin; x += 60)
+      bgTrees.push({ key: 'bg_mountain_small', x: x + Phaser.Math.Between(-3, 3), y: margin + 16 });
+    for (let x = margin + 30; x < W - margin; x += 60)
+      bgTrees.push({ key: 'bg_mountain_small', x: x + Phaser.Math.Between(-3, 3), y: H - margin - 16 });
+    for (let y = yardT + margin + 30; y < yardB - margin; y += 60)
+      bgTrees.push({ key: 'bg_mountain_small', x: margin + 8, y: y + Phaser.Math.Between(-3, 3) });
+    for (let y = yardT + margin + 30; y < yardB - margin; y += 60)
+      bgTrees.push({ key: 'bg_mountain_small', x: W - margin - 8, y: y + Phaser.Math.Between(-3, 3) });
+    // Inner top/bottom rows: more foothills plus a sparse alpine treeline
+    // (same room-to-fit guard as the forest theme's inner rows)
+    const innerHillY = yardT - 18, innerHillYB = yardB + 18;
+    if (innerHillY > margin + 26) {
+      for (let x = margin + 30; x < W - margin; x += 60)
+        bgTrees.push({ key: 'bg_mountain_small', x: x + Phaser.Math.Between(-3, 3), y: innerHillY + Phaser.Math.Between(-3, 3) });
+      for (let x = margin + 30; x < W - margin; x += 60)
+        bgTrees.push({ key: 'bg_mountain_small', x: x + Phaser.Math.Between(-3, 3), y: innerHillYB + Phaser.Math.Between(-3, 3) });
+      for (let x = margin + 10; x < W - margin; x += 120)
+        bgTrees.push({ key: 'bg_pine', x: x + Phaser.Math.Between(-6, 6), y: innerHillY + Phaser.Math.Between(-2, 2) });
+      for (let x = margin + 10; x < W - margin; x += 120)
+        bgTrees.push({ key: 'bg_pine', x: x + Phaser.Math.Between(-6, 6), y: innerHillYB + Phaser.Math.Between(-2, 2) });
+    }
+    }
 
     bgTrees.sort((a, b) => a.y - b.y);
     for (const { key, x, y } of bgTrees) rt.stamp(key, null, x, y);
@@ -866,16 +989,17 @@ class GameScene extends Phaser.Scene {
     this.obstacleGrid = Array.from({ length: YARD_ROWS }, () => new Uint8Array(YARD_COLS));
     this.obstacleClusters = [];
     this.pondCellCount = 0;
+    this.rockCellCount = 0;
     this.pondBounds = null;
 
-    // Gardens, bushes/hedges, and ponds: all cells grid-blocked
+    // Gardens, bushes/hedges, ponds, and boulders: all cells grid-blocked
     // (isNearGarden()'s edge-collision check applies to any obstacleGrid
     // cell, not just gardens specifically). Trees: no grid blocking —
     // trunk uses pixel-radius collision so the mower can enter and mow the
     // cell but can't pass through the trunk post.
     for (let r = 0; r < YARD_ROWS; r++)
       for (let c = 0; c < YARD_COLS; c++)
-        if (map[r][c] === 'G' || map[r][c] === 'B' || map[r][c] === 'P') this.obstacleGrid[r][c] = 1;
+        if (map[r][c] === 'G' || map[r][c] === 'B' || map[r][c] === 'P' || map[r][c] === 'R') this.obstacleGrid[r][c] = 1;
 
     this.trunkPositions = [];
 
@@ -886,7 +1010,7 @@ class GameScene extends Phaser.Scene {
     for (let r = 0; r < YARD_ROWS; r++) {
       for (let c = 0; c < YARD_COLS; c++) {
         const type = map[r][c];
-        if (type !== 'T' && type !== 'G' && type !== 'B' && type !== 'P') continue;
+        if (type !== 'T' && type !== 'G' && type !== 'B' && type !== 'P' && type !== 'R') continue;
 
         // Only process from the top-left corner of each contiguous cluster
         const aboveSame = r > 0 && map[r - 1][c] === type;
@@ -927,6 +1051,12 @@ class GameScene extends Phaser.Scene {
               this.trunkPositions.push({ wx: tx, wy: ty + 8 });
             }
           }
+        } else if (type === 'R') {
+          // Boulders: permanent rock — same never-auto-mows treatment as
+          // pond water (no cluster/perimeter tracking, cells excluded from
+          // totalCells in create()), just dry. No bounds tracking either:
+          // nothing lives on a rock the way the frog lives at the pond.
+          this.rockCellCount += cw * cH;
         } else {
           // Ponds: permanent water, never auto-mowed (no cluster/perimeter
           // tracking — unlike gardens/bushes, this area never joins the
@@ -942,16 +1072,16 @@ class GameScene extends Phaser.Scene {
             : { minR, maxR, minC, maxC };
         }
 
-        if (type === 'B' || type === 'P') {
-          // Bushes and ponds: one 16×16 texture per single cell (not a
-          // 32×32 2-cell block like trees/gardens use) — a hedge is often
-          // a single-cell-wide row, and a pond an arbitrary rectangle, so
-          // neither is guaranteed 2×2-aligned.
+        if (type === 'B' || type === 'P' || type === 'R') {
+          // Bushes, ponds, and boulders: one 16×16 texture per single cell
+          // (not a 32×32 2-cell block like trees/gardens use) — a hedge is
+          // often a single-cell-wide row, and a pond or rock formation an
+          // arbitrary rectangle, so none is guaranteed 2×2-aligned.
           for (let dr = 0; dr < cH; dr++) {
             for (let dc = 0; dc < cw; dc++) {
               const bx = (YARD_X + c + dc) * CELL + CELL / 2;
               const by = (YARD_Y + r + dr) * CELL + CELL / 2;
-              let key = type === 'B' ? 'bush' : 'pond';
+              let key = type === 'B' ? 'bush' : type === 'R' ? 'boulder' : 'pond';
               // A pond's 4 bounding-box corners use the notched variant
               // instead of the plain tile, so the overall shape reads as
               // rounded rather than a sharp rectangle (collision is still
@@ -980,9 +1110,13 @@ class GameScene extends Phaser.Scene {
           // Stamp one 32×32 texture per 2×2 sub-block within the cluster.
           // Trees pick one of a few variants per cluster (not per
           // sub-block) so a single clump of trees reads as one coherent
-          // type instead of a mix of species crammed together.
+          // type instead of a mix of species crammed together — except on
+          // mountain levels, where every cluster is an evergreen (the
+          // alpine treeline: round deciduous trees would break the theme).
           const key = type === 'T'
-            ? TREE_TYPES[Phaser.Math.Between(0, TREE_TYPES.length - 1)]
+            ? (this.levelData.theme === 'mountain'
+                ? 'tree_evergreen'
+                : TREE_TYPES[Phaser.Math.Between(0, TREE_TYPES.length - 1)])
             : 'garden';
           for (let dr = 0; dr < cH; dr += 2) {
             for (let dc = 0; dc < cw; dc += 2) {
@@ -1294,8 +1428,7 @@ class GameScene extends Phaser.Scene {
       setupAudio();
       this.scheduleSquirrel();
       this.scheduleBird();
-      this.scheduleDeer();
-      this.scheduleFox();
+      this.schedulePeekers();
     };
     // Assigned (not addEventListener) since this button persists across
     // scene.restart(), matching the win-overlay/dpad pattern elsewhere.
@@ -1737,6 +1870,88 @@ class GameScene extends Phaser.Scene {
     g.fillRect(headX + 3, y - 12, 2, 3);
   }
 
+  // ── Goat ──────────────────────────────────────────────────────────────────
+  // The mountain theme's border peeker — same peek/hold/retreat mechanic
+  // as the deer/fox, popping out from behind the peaks on the left/right.
+  // Which peekers a level gets is decided by schedulePeekers(): mountain
+  // levels get the goat instead of (not alongside) the deer and fox, since
+  // forest wildlife wandering out of a rock face would break the scene.
+
+  schedulePeekers() {
+    if (this.levelData.theme === 'mountain') {
+      this.scheduleGoat();
+    } else {
+      this.scheduleDeer();
+      this.scheduleFox();
+    }
+  }
+
+  scheduleGoat() {
+    if (this.won) return;
+    this.goatTimer = this.time.delayedCall(
+      Phaser.Math.Between(14000, 28000), this.launchGoat, [], this);
+  }
+
+  launchGoat() {
+    if (this.won) return;
+    const onLeft = Phaser.Math.Between(0, 1) === 0;
+    const y = Phaser.Math.Between(YARD_Y * CELL + 20, (YARD_Y + YARD_ROWS) * CELL - 20);
+    this.goat = { active: true, onLeft, y, phase: 'peek', elapsed: 0, t: 0 };
+  }
+
+  updateGoat(dt) {
+    if (!this.goat.active) return;
+    // Quicker peek and a longer hold than the deer — goats are sure-footed
+    // and nosy, so it pops out fast and then just stands there watching.
+    const PEEK_MS = 700, HOLD_MS = 2600, RETREAT_MS = 700;
+    this.goat.elapsed += dt * 1000;
+    if (this.goat.phase === 'peek') {
+      this.goat.t = Math.min(1, this.goat.elapsed / PEEK_MS);
+      if (this.goat.elapsed >= PEEK_MS) { this.goat.phase = 'hold'; this.goat.elapsed = 0; }
+    } else if (this.goat.phase === 'hold') {
+      this.goat.t = 1;
+      if (this.goat.elapsed >= HOLD_MS) { this.goat.phase = 'retreat'; this.goat.elapsed = 0; }
+    } else {
+      this.goat.t = Math.max(0, 1 - this.goat.elapsed / RETREAT_MS);
+      if (this.goat.elapsed >= RETREAT_MS) {
+        this.goat.active = false;
+        this.goatGfx.clear();
+        this.scheduleGoat();
+        return;
+      }
+    }
+    this.drawGoat();
+  }
+
+  drawGoat() {
+    const g = this.goatGfx;
+    g.clear();
+    const { onLeft, y, t } = this.goat;
+    const peekDepth = 20;
+    const baseX = onLeft ? -14 : W + 14;
+    const x     = onLeft ? baseX + peekDepth * t : baseX - peekDepth * t;
+    const headX = onLeft ? x + 6 : x - 6;
+    const hornD = onLeft ? -1 : 1; // horns sweep back, away from the yard
+
+    g.fillStyle(0x000000, 0.2);
+    g.fillEllipse(x, y + 10, 16, 4);
+    // Cream-white shaggy body — pale so it reads as "goat" against the
+    // gray peaks at a glance, nothing like the deer's brown or fox's rust
+    g.fillStyle(0xd8d2c2);
+    g.fillRect(x - 6, y - 4, 12, 10);
+    // Head, slightly paler
+    g.fillStyle(0xe4dfd2);
+    g.fillRect(headX - 3, y - 10, 7, 7);
+    // Backswept horns — two short angled nubs, dark gray
+    g.fillStyle(0x6a6660);
+    g.fillRect(headX - 2 + hornD * 2, y - 13, 2, 4);
+    g.fillRect(headX + 2 + hornD * 3, y - 12, 2, 3);
+    // Gray muzzle + tiny beard under the chin
+    g.fillStyle(0xb8b2a4);
+    g.fillRect(headX - 1, y - 5, 4, 2);
+    g.fillRect(headX, y - 3, 2, 2);
+  }
+
   // ── Dog ───────────────────────────────────────────────────────────────────
   // Sits in the yard (not the border, unlike bird/deer/fox) for the whole
   // level. Reacts to proximity every frame rather than a scheduled timer:
@@ -2089,6 +2304,7 @@ class GameScene extends Phaser.Scene {
     this.updateBird(dt);
     this.updateDeer(dt);
     this.updateFox(dt);
+    this.updateGoat(dt);
     this.updateDog(dt);
     this.updateFrog(dt);
     this.drawJoystick();
