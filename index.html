@@ -98,14 +98,17 @@
       text-shadow: 0 0 3px rgba(0,0,0,0.9), 0 0 3px rgba(0,0,0,0.9), 1px 1px 0 rgba(0,0,0,0.9);
     }
     .level-nav-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 16px;
       background: rgba(255, 255, 255, 0.15);
       border: 1px solid rgba(255, 255, 255, 0.4);
       border-radius: 3px;
       color: #fff;
       font-family: Arial, Helvetica, sans-serif;
       font-size: 11px;
-      line-height: 1;
-      padding: 1px 5px 2px;
       cursor: pointer;
       user-select: none;
       -webkit-user-select: none;
@@ -115,6 +118,19 @@
     .level-nav-btn:disabled {
       opacity: 0.25;
       cursor: default;
+    }
+    /* Touch devices: the mouse-precision size above is too small a target
+       to reliably tap. Bump both buttons up well past the ~18px they'd
+       otherwise render at (the whole #ui-canvas overlay is CSS-scaled to
+       match the canvas, so this is still comfortably tappable once scaled). */
+    @media (hover: none) and (pointer: coarse) {
+      .level-nav-btn {
+        width: 42px;
+        height: 42px;
+        font-size: 22px;
+        border-radius: 8px;
+      }
+      #level-nav { gap: 8px; }
     }
 
     /* ── Win overlay ─────────────────────────────────────────────────────── */
@@ -266,6 +282,47 @@
         font-size: 20px;
       }
     }
+    /* Reset-level button. Default (desktop/landscape): fixed bottom-center,
+       same float-free-of-#controls-spacer technique as #dpad/#hud-pct-bottom
+       (which sit at the opposite corners from each other in that mode).
+       Portrait: pinned to the left edge of #controls-spacer, mirroring
+       #hud-pct-bottom's own right-edge pinning — D-pad centers between the
+       two. */
+    #level-reset {
+      position: fixed;
+      left: 50%;
+      bottom: 18px;
+      transform: translateX(-50%);
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 255, 255, 0.15);
+      border: 2px solid rgba(255, 255, 255, 0.4);
+      border-radius: 50%;
+      color: #fff;
+      font-size: 20px;
+      line-height: 1;
+      cursor: pointer;
+      z-index: 20;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #level-reset:active { background: rgba(255, 255, 255, 0.4); }
+    @media (hover: none) and (pointer: coarse) and (orientation: portrait) {
+      #level-reset {
+        position: absolute;
+        left: 20px;
+        bottom: auto;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 46px;
+        height: 46px;
+        font-size: 24px;
+      }
+    }
     .dpad-btn {
       position: absolute;
       width: 72px;
@@ -345,6 +402,7 @@
       <button id="dpad-down"  class="dpad-btn" aria-label="Down">▼</button>
     </div>
     <div id="hud-pct-bottom">0%</div>
+    <button id="level-reset" aria-label="Reset level">&#8634;</button>
   </div>
 
   <!-- UI text overlay (positioned over canvas by JS) -->

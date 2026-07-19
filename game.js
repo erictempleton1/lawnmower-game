@@ -83,6 +83,12 @@ const TREE_TYPES = ['tree_round', 'tree_evergreen'];
 // once, before the very first level, not again on every level transition.
 let g_introShown = false;
 
+// Per-level mowing progress, keyed by level index — module-level so it
+// survives scene.restart() (see saveLevelState()/create()). Lets the
+// prev/next nav buttons revisit a level without losing progress; resetLevel()
+// deletes a level's entry so it starts fresh again.
+let g_levelState = {};
+
 // ─── Audio ────────────────────────────────────────────────────────────────────
 // Procedurally synthesized (no audio files to vendor) via the raw Web
 // Audio API rather than Phaser's sound manager, which is asset-based.
@@ -304,12 +310,47 @@ class GameScene extends Phaser.Scene {
     this.setupPlayer();
     this.setupInput();
 
+    // Restore this level's saved mowing progress (if any) from a previous
+    // visit — see saveLevelState(), called by goToLevel()/advanceLevel()
+    // just before scene.restart(). resetLevel() deletes the entry instead,
+    // so a level revisited after a reset starts fresh like normal.
+    const saved = g_levelState[this.currentLevel];
+    if (saved) {
+      this.player.x = saved.playerX;
+      this.player.y = saved.playerY;
+      this.player.dir = saved.playerDir;
+      for (let r = 0; r < YARD_ROWS; r++)
+        for (let c = 0; c < YARD_COLS; c++)
+          this.grid[r][c] = saved.grid[r][c];
+      this.mowedCount = saved.mowedCount;
+      this.won = saved.won;
+      for (let i = 0; i < this.obstacleClusters.length; i++)
+        this.obstacleClusters[i].done = !!saved.clusterDone[i];
+      // Re-stamp every already-mowed cell onto the (currently blank)
+      // mowed-grass RT so the restored progress is actually visible —
+      // the grid array alone only tracks state, not pixels.
+      for (let r = 0; r < YARD_ROWS; r++) {
+        for (let c = 0; c < YARD_COLS; c++) {
+          const h = this.grid[r][c];
+          if (h === 0) continue;
+          const cx = (YARD_X + c) * CELL + CELL / 2;
+          const cy = (YARD_Y + r) * CELL + CELL / 2;
+          this.mowedRT.stamp(this.mowedTextureKey(h, c, r), null, cx, cy);
+        }
+      }
+      this.mowedRT.render();
+    }
+
     // Dog: sits somewhere away from the player's start cell for the whole
     // level, reacting to proximity every frame rather than on a timer (see
     // updateDog()) — always present, unlike the scheduled wildlife below.
-    const dogSpot = this.pickDogSpot(this.player.x, this.player.y, 80)
-      ?? { x: (YARD_X + YARD_COLS - 1) * CELL + CELL / 2, y: (YARD_Y + YARD_ROWS - 1) * CELL + CELL / 2 };
-    this.dog = { x: dogSpot.x, y: dogSpot.y, state: 'idle', cooldownRemaining: 0 };
+    if (saved && saved.dog) {
+      this.dog = { ...saved.dog };
+    } else {
+      const dogSpot = this.pickDogSpot(this.player.x, this.player.y, 80)
+        ?? { x: (YARD_X + YARD_COLS - 1) * CELL + CELL / 2, y: (YARD_Y + YARD_ROWS - 1) * CELL + CELL / 2 };
+      this.dog = { x: dogSpot.x, y: dogSpot.y, state: 'idle', cooldownRemaining: 0 };
+    }
 
     // Frog: only on levels with a pond. Sits on solid ground at whichever
     // side of the pond has a free grass cell (pickFrogSpot()), jumping in
@@ -317,21 +358,37 @@ class GameScene extends Phaser.Scene {
     // updateFrog().
     this.frog = null;
     if (this.pondBounds) {
-      const fs = this.pickFrogSpot();
-      if (fs) {
-        const spotX = (YARD_X + fs.spotCol) * CELL + CELL / 2;
-        const spotY = (YARD_Y + fs.spotRow) * CELL + CELL / 2;
-        const jumpX = (YARD_X + fs.jumpCol) * CELL + CELL / 2;
-        const jumpY = (YARD_Y + fs.jumpRow) * CELL + CELL / 2;
-        this.frog = { x: spotX, y: spotY, spotX, spotY, jumpX, jumpY, state: 'sitting', t: 0, cooldownRemaining: 0 };
+      if (saved && saved.frog) {
+        this.frog = { ...saved.frog };
+      } else {
+        const fs = this.pickFrogSpot();
+        if (fs) {
+          const spotX = (YARD_X + fs.spotCol) * CELL + CELL / 2;
+          const spotY = (YARD_Y + fs.spotRow) * CELL + CELL / 2;
+          const jumpX = (YARD_X + fs.jumpCol) * CELL + CELL / 2;
+          const jumpY = (YARD_Y + fs.jumpRow) * CELL + CELL / 2;
+          this.frog = { x: spotX, y: spotY, spotX, spotY, jumpX, jumpY, state: 'sitting', t: 0, cooldownRemaining: 0 };
+        }
       }
     }
 
     this.buildHUD();
+    // buildHUD() always initializes the readout to '0%' — refresh it from
+    // the just-restored mowedCount so a revisited level doesn't show a
+    // stale 0% until the next newly-mowed cell happens to update it.
+    if (saved) this.updateHUD();
     this.buildWinOverlay();
     this.buildIntroOverlay();
     this.syncUIOverlay();
     this.scale.on('resize', this.syncUIOverlay, this);
+
+    // A restored win needs the overlay re-shown explicitly — updateHUD()'s
+    // own win check only fires on the pct crossing 100 while !this.won,
+    // which is already false here since it was just restored as true.
+    if (saved && saved.won) {
+      this.showWin();
+      setHumActive(false);
+    }
 
     this.squirrelGfx = this.add.graphics();
     this.squirrelGfx.setDepth(4);
@@ -1054,6 +1111,28 @@ class GameScene extends Phaser.Scene {
     this.levelNextEl.disabled = this.currentLevel >= this.allLevels.length - 1;
     this.levelPrevEl.onclick = () => this.goToLevel(this.currentLevel - 1);
     this.levelNextEl.onclick = () => this.goToLevel(this.currentLevel + 1);
+
+    this.levelResetEl = document.getElementById('level-reset');
+    this.levelResetEl.onclick = () => this.resetLevel();
+  }
+
+  // Snapshots the current level's mowing progress into the module-level
+  // g_levelState so goToLevel() can restore it on a later revisit — called
+  // right before scene.restart() discards this scene instance. Plain
+  // per-row array copies (not the Uint8Array grid itself) since the
+  // restore side just indexes into it the same way either way.
+  saveLevelState() {
+    g_levelState[this.currentLevel] = {
+      grid: this.grid.map(row => Array.from(row)),
+      mowedCount: this.mowedCount,
+      won: this.won,
+      clusterDone: this.obstacleClusters.map(cl => cl.done),
+      playerX: this.player.x,
+      playerY: this.player.y,
+      playerDir: this.player.dir,
+      dog: { ...this.dog },
+      frog: this.frog ? { ...this.frog } : null,
+    };
   }
 
   // No wraparound — only navigates when a level actually exists at index;
@@ -1061,8 +1140,17 @@ class GameScene extends Phaser.Scene {
   // state above) are a silent no-op rather than clamping or looping.
   goToLevel(index) {
     if (index < 0 || index >= this.allLevels.length) return;
+    this.saveLevelState();
     this.hideWin();
     this.scene.restart({ levels: this.allLevels, level: index });
+  }
+
+  // Discards this level's saved progress (if any) and restarts it fresh —
+  // unlike goToLevel(), which preserves progress across a visit.
+  resetLevel() {
+    delete g_levelState[this.currentLevel];
+    this.hideWin();
+    this.scene.restart({ levels: this.allLevels, level: this.currentLevel });
   }
 
   syncUIOverlay() {
@@ -1132,6 +1220,7 @@ class GameScene extends Phaser.Scene {
 
   advanceLevel() {
     const next = (this.currentLevel + 1) % this.allLevels.length;
+    this.saveLevelState();
     this.hideWin();
     this.scene.restart({ levels: this.allLevels, level: next });
   }
