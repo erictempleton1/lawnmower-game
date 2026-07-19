@@ -1311,15 +1311,68 @@ class GameScene extends Phaser.Scene {
   launchSquirrel() {
     if (this.won) return;
     this.squirrelCount++;
-    const edge = Phaser.Math.Between(0, 3);
     const yL = YARD_X * CELL, yR = (YARD_X + YARD_COLS) * CELL;
     const yT = YARD_Y * CELL, yB = (YARD_Y + YARD_ROWS) * CELL;
+
+    // A squirrel runs in a dead-straight line across the whole yard, so on
+    // levels with a pond (this.pondBounds), a path whose row/column
+    // overlaps the pond's would look like it's running across the water.
+    // Horizontal edges (left/right) need a safe y outside the pond's row
+    // band; vertical edges (top/bottom) need a safe x outside its column
+    // band — pondSafeValue() returns null when a pond spans (with buffer)
+    // the *entire* usable range on that axis, which a wide-but-short or
+    // tall-but-narrow pond can do easily. When that happens, only the
+    // other pair of edges is offered at all, rather than occasionally
+    // falling back to a path that cuts straight across the water.
+    const pond = this.pondBounds ? {
+      top: (YARD_Y + this.pondBounds.minR) * CELL,
+      bottom: (YARD_Y + this.pondBounds.maxR + 1) * CELL,
+      left: (YARD_X + this.pondBounds.minC) * CELL,
+      right: (YARD_X + this.pondBounds.maxC + 1) * CELL,
+    } : null;
+
+    const safeY = this.pondSafeValue(yT + CELL, yB - CELL, pond && pond.top - CELL, pond && pond.bottom + CELL);
+    const safeX = this.pondSafeValue(yL + CELL, yR - CELL, pond && pond.left - CELL, pond && pond.right + CELL);
+
+    const edges = [];
+    if (safeY !== null) edges.push(0, 1);
+    if (safeX !== null) edges.push(2, 3);
+    const edge = edges.length ? edges[Phaser.Math.Between(0, edges.length - 1)] : Phaser.Math.Between(0, 3);
+
     let x, y, dx, dy;
-    if (edge === 0) { x = yL;  y = Phaser.Math.Between(yT + CELL, yB - CELL); dx =  1; dy =  0; }
-    else if (edge === 1) { x = yR;  y = Phaser.Math.Between(yT + CELL, yB - CELL); dx = -1; dy =  0; }
-    else if (edge === 2) { x = Phaser.Math.Between(yL + CELL, yR - CELL); y = yT;  dx =  0; dy =  1; }
-    else                 { x = Phaser.Math.Between(yL + CELL, yR - CELL); y = yB;  dx =  0; dy = -1; }
+    if (edge === 0 || edge === 1) {
+      x  = edge === 0 ? yL : yR;
+      y  = safeY !== null ? safeY : Phaser.Math.Between(yT + CELL, yB - CELL);
+      dx = edge === 0 ? 1 : -1;
+      dy = 0;
+    } else {
+      x  = safeX !== null ? safeX : Phaser.Math.Between(yL + CELL, yR - CELL);
+      y  = edge === 2 ? yT : yB;
+      dx = 0;
+      dy = edge === 2 ? 1 : -1;
+    }
     this.squirrel = { active: true, x, y, dx, dy };
+  }
+
+  // Picks a random value in [lo, hi] that avoids the (exLo, exHi) sub-range
+  // (no-op, returning an unrestricted value, if exLo/exHi are null — i.e.
+  // no pond this level), preferring whichever remaining segment actually
+  // has room. Returns null if the excluded span covers the *entire* range,
+  // meaning there's no safe value left to avoid the pond on this axis at
+  // all — the caller then treats that whole edge pair as unusable rather
+  // than forcing a value that would still cross it.
+  pondSafeValue(lo, hi, exLo, exHi) {
+    if (exLo == null) return Phaser.Math.Between(lo, hi);
+    const segABound = Math.min(hi, exLo);
+    const segBBound = Math.max(lo, exHi);
+    const lenA = segABound - lo;
+    const lenB = hi - segBBound;
+    if (lenA <= 0 && lenB <= 0) return null;
+    if (lenB <= 0) return Phaser.Math.Between(lo, segABound);
+    if (lenA <= 0) return Phaser.Math.Between(segBBound, hi);
+    return Math.random() < lenA / (lenA + lenB)
+      ? Phaser.Math.Between(lo, segABound)
+      : Phaser.Math.Between(segBBound, hi);
   }
 
   updateSquirrel(dt) {
