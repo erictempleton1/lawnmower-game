@@ -157,24 +157,33 @@ function playBirdChirp() {
   }
 }
 
-// A short, punchy bark — sawtooth with a fast downward pitch sweep and a
-// quick decay — triggered once when the dog startles and scampers off
-// (see updateDog()).
+// A short two-note "arf-arf" — triggered once when the dog startles and
+// scampers off (see updateDog()). A square oscillator gives a woofier body
+// than a raw sawtooth, and a lowpass filter that sweeps down alongside the
+// pitch drop rounds off the harsh top end so it reads as a soft bark
+// rather than a buzz.
 function playDogBark() {
   if (!g_audioCtx) return;
-  const t    = g_audioCtx.currentTime;
-  const osc  = g_audioCtx.createOscillator();
-  const gain = g_audioCtx.createGain();
-  osc.type = 'sawtooth';
-  osc.frequency.setValueAtTime(340, t);
-  osc.frequency.exponentialRampToValueAtTime(160, t + 0.09);
-  gain.gain.setValueAtTime(0, t);
-  gain.gain.linearRampToValueAtTime(0.2, t + 0.008);
-  gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
-  osc.connect(gain);
-  gain.connect(g_audioCtx.destination);
-  osc.start(t);
-  osc.stop(t + 0.15);
+  for (let i = 0; i < 2; i++) {
+    const t      = g_audioCtx.currentTime + i * 0.15;
+    const osc    = g_audioCtx.createOscillator();
+    const filter = g_audioCtx.createBiquadFilter();
+    const gain   = g_audioCtx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(400, t);
+    osc.frequency.exponentialRampToValueAtTime(150, t + 0.09);
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(2000, t);
+    filter.frequency.exponentialRampToValueAtTime(500, t + 0.09);
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(0.2, t + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(g_audioCtx.destination);
+    osc.start(t);
+    osc.stop(t + 0.13);
+  }
 }
 
 // Pads an authored level map out to YARD_ROWS×YARD_COLS with plain grass,
@@ -1324,32 +1333,46 @@ class GameScene extends Phaser.Scene {
   }
 
   updateDog(dt) {
-    const TRIGGER_DIST = 48, FLEE_MS = 400, COOLDOWN_MS = 1500;
+    // Speed-based (not a fixed duration) so a scamper to a near spot and a
+    // far one both move at the same hurried-but-not-blurring pace — well
+    // under the player's own 80px/s medium speed, so it reads as a quick
+    // trot rather than a dash.
+    const TRIGGER_DIST = 48, FLEE_SPEED = 55, COOLDOWN_MS = 1500;
     if (this.dog.state === 'idle') {
       if (this.dog.cooldownRemaining > 0) {
         this.dog.cooldownRemaining -= dt * 1000;
       } else {
         const dist = Math.hypot(this.player.x - this.dog.x, this.player.y - this.dog.y);
         if (dist < TRIGGER_DIST) {
-          // Picked away from the player (not just the dog's old spot) so
-          // the new resting place can't immediately re-trigger a flee.
+          // Picked away from the player (not just the dog's own old spot)
+          // so the new resting place can't immediately re-trigger a flee.
           const spot = this.pickDogSpot(this.player.x, this.player.y, 100);
           if (spot) {
+            const fleeDist = Math.hypot(spot.x - this.dog.x, spot.y - this.dog.y);
             this.dog.state       = 'fleeing';
             this.dog.fleeFromX   = this.dog.x;
             this.dog.fleeFromY   = this.dog.y;
             this.dog.fleeToX     = spot.x;
             this.dog.fleeToY     = spot.y;
             this.dog.fleeElapsed = 0;
+            this.dog.fleeMs      = Phaser.Math.Clamp(fleeDist / FLEE_SPEED * 1000, 400, 1400);
             playDogBark();
           }
         }
       }
     } else {
       this.dog.fleeElapsed += dt * 1000;
-      const t = Math.min(1, this.dog.fleeElapsed / FLEE_MS);
-      this.dog.x = Phaser.Math.Linear(this.dog.fleeFromX, this.dog.fleeToX, t);
-      this.dog.y = Phaser.Math.Linear(this.dog.fleeFromY, this.dog.fleeToY, t);
+      const t = Math.min(1, this.dog.fleeElapsed / this.dog.fleeMs);
+      const dx = this.dog.fleeToX - this.dog.fleeFromX;
+      const dy = this.dog.fleeToY - this.dog.fleeFromY;
+      const len = Math.hypot(dx, dy) || 1;
+      // Small side-to-side wobble (perpendicular to the travel line, fading
+      // out near the end) so the scamper reads as scurrying rather than a
+      // dead-straight slide.
+      const perpX  = -dy / len, perpY = dx / len;
+      const wobble = Math.sin(t * Math.PI * 5) * 2 * (1 - t);
+      this.dog.x = Phaser.Math.Linear(this.dog.fleeFromX, this.dog.fleeToX, t) + perpX * wobble;
+      this.dog.y = Phaser.Math.Linear(this.dog.fleeFromY, this.dog.fleeToY, t) + perpY * wobble;
       if (t >= 1) {
         this.dog.state             = 'idle';
         this.dog.cooldownRemaining = COOLDOWN_MS;
@@ -1361,20 +1384,47 @@ class GameScene extends Phaser.Scene {
   drawDog() {
     const g = this.dogGfx;
     g.clear();
-    const x   = Math.round(this.dog.x);
-    const y   = Math.round(this.dog.y);
-    const bob = this.dog.state === 'fleeing' && Math.floor(Date.now() / 60) % 2 === 1 ? -1 : 0;
+    const x = Math.round(this.dog.x);
+    const y = Math.round(this.dog.y);
 
-    g.fillStyle(0x000000, 0.25);
+    if (this.dog.state !== 'fleeing') {
+      // Sitting: low, wide haunches with the chest/head held upright and
+      // the tail curled in at the side — a distinctly "at rest" silhouette
+      // rather than just the running pose standing still.
+      g.fillStyle(0x000000, 0.25);
+      g.fillEllipse(x, y + 6, 12, 3);
+      g.fillStyle(0x181818);
+      g.fillEllipse(x, y + 2, 11, 8);  // haunches, low and wide
+      g.fillRect(x - 3, y - 6, 6, 7);  // upright chest
+      g.fillRect(x - 3, y - 10, 5, 5); // head, held up
+      g.fillStyle(0x0a0a0a);
+      g.fillRect(x - 3, y - 12, 2, 3); // ear
+      g.fillRect(x + 1, y - 12, 2, 3); // ear
+      g.fillRect(x + 5, y + 3, 3, 3);  // tail, curled in at the side
+      g.fillStyle(0xffffff, 0.8);
+      g.fillRect(x - 2, y - 9, 1, 1);  // eye highlight
+      return;
+    }
+
+    // Fleeing: low, stretched scamper pose facing the direction of travel
+    // (same dx/dy-driven head placement the squirrel uses), with a quick
+    // bob for a scurrying read.
+    const dx  = this.dog.fleeToX - this.dog.fleeFromX;
+    const dy  = this.dog.fleeToY - this.dog.fleeFromY;
+    const bob = Math.floor(Date.now() / 70) % 2 === 1 ? -1 : 0;
+    let hx, hy;
+    if (Math.abs(dx) >= Math.abs(dy)) { hx = dx > 0 ? 5 : -5; hy = 0; }
+    else                              { hx = 0; hy = dy > 0 ? 5 : -5; }
+
+    g.fillStyle(0x000000, 0.2);
     g.fillEllipse(x, y + 6, 12, 3);
     g.fillStyle(0x181818);
-    g.fillRect(x - 5, y - 2 + bob, 10, 7); // body
-    g.fillRect(x + 3, y - 4 + bob, 4, 5);  // head
+    g.fillRect(x - 5, y - 2 + bob, 10, 6);              // stretched body
+    g.fillRect(x + hx - 2, y + hy - 2 + bob, 5, 5);      // head, out front
     g.fillStyle(0x0a0a0a);
-    g.fillRect(x + 4, y - 6 + bob, 2, 3);  // ear
-    g.fillRect(x - 6, y - 1 + bob, 3, 3);  // tail
+    g.fillRect(x - hx - 1, y - hy - 1 + bob, 3, 2);      // tail, trailing behind
     g.fillStyle(0xffffff, 0.8);
-    g.fillRect(x + 6, y - 3 + bob, 1, 1);  // eye highlight
+    g.fillRect(x + hx - 1, y + hy - 1 + bob, 1, 1);      // eye
   }
 
   updateHUD() {
