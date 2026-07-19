@@ -28,7 +28,7 @@ BASE_YARD_ROWS = 12 (authored level height)
 | 1 | Mowed grass RT |
 | 2 | Player gfx |
 | 3 | Obstacle RT (trees + gardens) |
-| 4 | Sprinkler gfx, Squirrel gfx |
+| 4 | Squirrel gfx |
 | 10 | Joystick gfx, HUD |
 
 Player is at depth 2 so he walks visually under the tree canopy (depth 3).
@@ -61,10 +61,11 @@ This is a deliberate return to a simpler design after two failed attempts at mat
 
 `buildMowedTextures()` generates just this one `mowed_H_full` texture per deck height — used by both the player's own mowing and by `checkClusterCompletion()`'s garden auto-mow (which stamps whole cells instantly and is hidden under the garden's own obstacle-layer texture anyway, depth 3 above the mowed layer's depth 1).
 
-Sprinkler-revert doesn't rebuild the whole mowed RT from grid state — `eraseMowedBlock(gr, gc, blockCells)` punches a targeted hole via `RenderTexture.erase()` over just the affected cell block, regardless of how that area was originally painted.
-
 ## No Toggle-able Settings
-Deck height, speed, blade, and distractions (sprinklers/squirrel) all used to be player-adjustable via a lever/toggle panel docked to the right border. That panel was removed — there is no in-game way to change these anymore. They're fixed at their old defaults: `this.deckHeight = 2` (set once in `create()`), `SPEED_STEP = 2` (medium), blade always on, distractions always on. If a "make it configurable again" request comes in, the lever UI code is recoverable from git history (commit `1b1fe23` and earlier had the full lever/toggle implementation).
+Deck height, speed, blade, and distractions (squirrel) all used to be player-adjustable via a lever/toggle panel docked to the right border. That panel was removed — there is no in-game way to change these anymore. They're fixed at their old defaults: `this.deckHeight = 2` (set once in `create()`), `SPEED_STEP = 2` (medium), blade always on, distractions always on. If a "make it configurable again" request comes in, the lever UI code is recoverable from git history (commit `1b1fe23` and earlier had the full lever/toggle implementation).
+
+## No Sprinklers (removed)
+Sprinklers (a periodic pop-up spray animation that reverted a small mowed patch back to grass) were removed — buggy and the feel wasn't landing. The full implementation (`scheduleSprinkler`/`popSprinkler`/`findSprinklerPos`/`animateSprinkler`/`eraseMowedBlock`, plus the `activeSprinkler` collision/mow-blocking checks in `isObstacle()`/`mowAt()`) is recoverable from git history if revisiting (see commits around 2026-07-19). Squirrels are unaffected and still active.
 
 ## Mobile Layout
 `#game-container` hosts the Phaser canvas (`scale.parent` in the game config); `#controls-spacer` (a sibling, sized via CSS flex) reserves room below it for the D-pad, real height only in portrait+touch (see media queries in `index.html`). `applyResponsiveLayout()` in `game.js` sets `#game-container`'s `aspect-ratio` from the computed `W`/`H` so Phaser's FIT scaling fills it with no dead space. The D-pad itself gets a slightly smaller, portrait-specific size/layout (`156px`, nested inside `#controls-spacer`) vs. its default fixed-position landscape sizing (`192px`, floating over the canvas's side dead zone) — portrait is capped tighter to comfortably fit `CONTROL_RESERVE_PX`'s ~190px reserved zone.

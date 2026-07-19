@@ -36,10 +36,10 @@ const WIN_PCT   = 100;
 const SPEED_VALS = [45, 80, 130]; // turtle / medium / rabbit
 const SPEED_STEP = 2;              // fixed at medium — no speed toggle
 
-// Sprinklers/squirrels per level used to cap at (currentLevel + 1) — just 1
-// on level 1 — which reads as barely-there now that denser level layouts
-// make a full mow take a lot longer. A flat, higher cap keeps them showing
-// up at a similar pace regardless of level number or how long a level takes.
+// Squirrels per level used to cap at (currentLevel + 1) — just 1 on level
+// 1 — which reads as barely-there now that denser level layouts make a
+// full mow take a lot longer. A flat, higher cap keeps them showing up at
+// a similar pace regardless of level number or how long a level takes.
 const DISTRACTIONS_PER_LEVEL = 4;
 
 // ─── Palette ─────────────────────────────────────────────────────────────────
@@ -121,9 +121,6 @@ class GameScene extends Phaser.Scene {
     this.mowedCount     = 0;
     this.won            = false;
     this.deckHeight     = 2;
-    this.sprinklerCount   = 0;
-    this.sprinklerTimer   = null;
-    this.activeSprinkler  = null;
     this.speedStep      = SPEED_STEP;
     this.squirrel       = { active: false };
     this.squirrelCount  = 0;
@@ -139,8 +136,6 @@ class GameScene extends Phaser.Scene {
     let bushCells = 0;
     for (const row of this.levelData.map) for (const ch of row) if (ch === 'B') bushCells++;
     this.totalCells = YARD_ROWS * YARD_COLS - bushCells;
-    this.sprinklerGfx  = this.add.graphics();
-    this.sprinklerGfx.setDepth(4);
 
     this.setupPlayer();
     this.setupInput();
@@ -153,7 +148,6 @@ class GameScene extends Phaser.Scene {
     this.squirrelGfx.setDepth(4);
 
     this.mowAt(this.player.x, this.player.y);
-    this.scheduleSprinkler();
     this.scheduleSquirrel();
 
     document.getElementById('loading-screen')?.classList.add('hidden');
@@ -489,10 +483,6 @@ class GameScene extends Phaser.Scene {
       const ddx = px - wx, ddy = py - wy;
       if (ddx * ddx + ddy * ddy < 36) return true; // 6px radius around trunk
     }
-    if (this.activeSprinkler) {
-      const { r, c } = this.activeSprinkler;
-      if (gr >= r && gr < r + 2 && gc >= c && gc < c + 2) return true;
-    }
     if (this.squirrel.active) {
       const sqc = Math.floor((this.squirrel.x - YARD_X * CELL) / CELL);
       const sqr = Math.floor((this.squirrel.y - YARD_Y * CELL) / CELL);
@@ -657,7 +647,6 @@ class GameScene extends Phaser.Scene {
     this.events.on('shutdown', () => {
       this.hideWin();
       this.scale.off('resize', this.syncUIOverlay, this);
-      if (this.sprinklerTimer) this.sprinklerTimer.remove();
       if (this.squirrelTimer)  this.squirrelTimer.remove();
       this.squirrelGfx?.clear();
     });
@@ -687,10 +676,6 @@ class GameScene extends Phaser.Scene {
     const gr = Math.floor((py - YARD_Y * CELL) / CELL);
     if (gc < 0 || gc >= YARD_COLS || gr < 0 || gr >= YARD_ROWS) return;
     if (this.obstacleGrid[gr][gc]) return;
-    if (this.activeSprinkler) {
-      const { r, c } = this.activeSprinkler;
-      if (gr >= r && gr < r + 2 && gc >= c && gc < c + 2) return;
-    }
     if (this.squirrel.active) {
       const sqc = Math.floor((this.squirrel.x - YARD_X * CELL) / CELL);
       const sqr = Math.floor((this.squirrel.y - YARD_Y * CELL) / CELL);
@@ -741,142 +726,6 @@ class GameScene extends Phaser.Scene {
       }
       this.mowedRT.render();
     }
-  }
-
-  // ── Sprinkler ─────────────────────────────────────────────────────────────
-
-  scheduleSprinkler() {
-    if (this.sprinklerCount >= DISTRACTIONS_PER_LEVEL || this.won) return;
-    const pct         = this.mowedCount / this.totalCells;
-    const speedFactor = 1 + (2 - this.speedStep) * 0.35; // 1.35 turtle → 1.0 mid → 0.65 rabbit
-    const delay = (Phaser.Math.Between(3000, 6000)
-                 + 12000 * (1 - pct)
-                 + 2000  * this.currentLevel) * speedFactor;
-    this.sprinklerTimer = this.time.delayedCall(delay, this.popSprinkler, [], this);
-  }
-
-  popSprinkler() {
-    if (this.won) return;
-    const pos = this.findSprinklerPos();
-    if (!pos) { this.scheduleSprinkler(); return; }
-
-    this.sprinklerCount++;
-    const { r, c } = pos;
-    this.activeSprinkler = { r, c };
-    const wx = (YARD_X + c) * CELL + CELL;
-    const wy = (YARD_Y + r) * CELL + CELL;
-    this.animateSprinkler(wx, wy, r, c);
-  }
-
-  findSprinklerPos() {
-    const pgc = Math.floor((this.player.x - YARD_X * CELL) / CELL);
-    const pgr = Math.floor((this.player.y - YARD_Y * CELL) / CELL);
-    const candidates = [];
-    for (let r = 0; r <= YARD_ROWS - 2; r++) {
-      for (let c = 0; c <= YARD_COLS - 2; c++) {
-        let valid = true, hasMowed = true;
-        if (pgr >= r && pgr < r + 2 && pgc >= c && pgc < c + 2) valid = false;
-        if (valid) outer: for (let dr = 0; dr < 2; dr++) {
-          for (let dc = 0; dc < 2; dc++) {
-            if (this.obstacleGrid[r + dr][c + dc]) { valid = false; break outer; }
-            if (this.grid[r + dr][c + dc] === 0) hasMowed = false;
-          }
-        }
-        if (valid && hasMowed) candidates.push({ r, c });
-      }
-    }
-    if (candidates.length === 0) return null;
-    return candidates[Phaser.Math.Between(0, candidates.length - 1)];
-  }
-
-  // Erases the mowed appearance of a 2x2 cell block (used when a sprinkler
-  // reverts grass back to unmowed). Grid state (this.grid) is cleared by
-  // the caller; this only needs to punch the matching hole in the RT,
-  // since mowed grass is no longer built from re-stampable per-cell shapes.
-  eraseMowedBlock(gr, gc, blockCells) {
-    const wx = (YARD_X + gc) * CELL;
-    const wy = (YARD_Y + gr) * CELL;
-    const size = CELL * blockCells;
-    const eraseGfx = this.make.graphics({ add: false });
-    eraseGfx.fillStyle(0xffffff);
-    eraseGfx.fillRect(0, 0, size, size);
-    this.mowedRT.erase(eraseGfx, wx, wy);
-    this.mowedRT.render();
-    eraseGfx.destroy();
-  }
-
-  animateSprinkler(wx, wy, gr, gc) {
-    const RISE    = 400;
-    const SPRAY   = 2000;
-    const RETRACT = 400;
-    const TOTAL   = RISE + SPRAY + RETRACT;
-    const MAX_H   = 14;
-    let elapsed   = 0;
-    let angle     = 0;
-    let reverted  = false;
-    const gfx     = this.sprinklerGfx;
-
-    const ev = this.time.addEvent({
-      delay: 16,
-      loop: true,
-      callback: () => {
-        elapsed += 16;
-        gfx.clear();
-
-        let stemH, spraying;
-        if (elapsed < RISE) {
-          stemH    = MAX_H * (elapsed / RISE);
-          spraying = false;
-        } else if (elapsed < RISE + SPRAY) {
-          stemH    = MAX_H;
-          spraying = true;
-          angle   += 0.08;
-        } else {
-          // Revert grass exactly once at the spray→retract boundary
-          if (!reverted) {
-            reverted = true;
-            for (let dr = 0; dr < 2; dr++) {
-              for (let dc = 0; dc < 2; dc++) {
-                if (this.grid[gr + dr][gc + dc] !== 0) {
-                  this.grid[gr + dr][gc + dc] = 0;
-                  this.mowedCount = Math.max(0, this.mowedCount - 1);
-                }
-              }
-            }
-            this.eraseMowedBlock(gr, gc, 2);
-            this.updateHUD();
-          }
-          stemH    = MAX_H * Math.max(0, 1 - (elapsed - RISE - SPRAY) / RETRACT);
-          spraying = false;
-        }
-
-        // Stem
-        gfx.fillStyle(0x999999);
-        gfx.fillRect(wx - 2, wy - stemH, 4, stemH);
-        // Head
-        gfx.fillStyle(0xcccccc);
-        gfx.fillCircle(wx, wy - stemH, 3);
-
-        if (spraying) {
-          for (let i = 0; i < 4; i++) {
-            const a = angle + (i * Math.PI / 2);
-            const tx = wx + Math.cos(a) * 20;
-            const ty = wy - stemH - 6 + Math.sin(a) * 8;
-            gfx.lineStyle(1, 0x66bbff, 0.85);
-            gfx.lineBetween(wx, wy - stemH, tx, ty);
-            gfx.fillStyle(0x66bbff, 0.7);
-            gfx.fillCircle(tx, ty, 1.5);
-          }
-        }
-
-        if (elapsed >= TOTAL) {
-          ev.remove();
-          gfx.clear();
-          this.activeSprinkler = null;
-          this.scheduleSprinkler();
-        }
-      }
-    });
   }
 
   // ── Squirrel ──────────────────────────────────────────────────────────────
