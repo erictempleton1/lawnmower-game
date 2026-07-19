@@ -130,12 +130,7 @@ class GameScene extends Phaser.Scene {
     this.buildMowedLayer();
     this.buildObstacleLayer();
 
-    // Bushes/hedges are permanent obstacles with no auto-mow (unlike
-    // gardens, which eventually add their cells to mowedCount once their
-    // perimeter is mowed) — excluded here so 100% stays reachable.
-    let bushCells = 0;
-    for (const row of this.levelData.map) for (const ch of row) if (ch === 'B') bushCells++;
-    this.totalCells = YARD_ROWS * YARD_COLS - bushCells;
+    this.totalCells = YARD_ROWS * YARD_COLS;
 
     this.setupPlayer();
     this.setupInput();
@@ -304,6 +299,24 @@ class GameScene extends Phaser.Scene {
     bt.generateTexture('bg_tree', BG_S, BG_S);
     bt.destroy();
 
+    // Background pine — same muted palette as bg_tree, conical instead of
+    // round, staggered in alongside it on the left/right sides for a more
+    // layered forest-edge look.
+    const BG_PINE_S = 40;
+    const bp = this.make.graphics({ add: false });
+    bp.fillStyle(0x000000, 0.25);
+    bp.fillEllipse(BG_PINE_S / 2, BG_PINE_S - 5, BG_PINE_S * 0.6, 6);
+    bp.fillStyle(0x3a2810);
+    bp.fillRect(BG_PINE_S / 2 - 3, BG_PINE_S - 15, 6, 12);
+    bp.fillStyle(0x12280d);
+    bp.fillTriangle(BG_PINE_S / 2, 4, BG_PINE_S * 0.1, BG_PINE_S * 0.75, BG_PINE_S * 0.9, BG_PINE_S * 0.75);
+    bp.fillStyle(0x1a3812);
+    bp.fillTriangle(BG_PINE_S / 2, 10, BG_PINE_S * 0.2, BG_PINE_S * 0.55, BG_PINE_S * 0.8, BG_PINE_S * 0.55);
+    bp.fillStyle(0x234a18);
+    bp.fillTriangle(BG_PINE_S / 2, 16, BG_PINE_S * 0.3, BG_PINE_S * 0.35, BG_PINE_S * 0.7, BG_PINE_S * 0.35);
+    bp.generateTexture('bg_pine', BG_PINE_S, BG_PINE_S);
+    bp.destroy();
+
     const g = this.make.graphics({ add: false });
 
     // Border: a darker, wilder green (unmown) instead of flat dirt, so it
@@ -383,6 +396,15 @@ class GameScene extends Phaser.Scene {
     for (let y = yardT + margin; y < yardB - margin; y += 66)
       rt.stamp('bg_tree', null, W - margin, y + Phaser.Math.Between(-12, 12));
 
+    // Pine trees staggered in alongside the side bg_trees — offset half a
+    // step vertically and tucked a bit closer to the outer edge, so the
+    // two rows interleave into a layered tree line instead of a single
+    // flat row.
+    for (let y = yardT + margin + 33; y < yardB - margin; y += 66)
+      rt.stamp('bg_pine', null, margin - 8, y + Phaser.Math.Between(-10, 10));
+    for (let y = yardT + margin + 33; y < yardB - margin; y += 66)
+      rt.stamp('bg_pine', null, W - margin + 8, y + Phaser.Math.Between(-10, 10));
+
     rt.render();
     g.destroy();
   }
@@ -420,7 +442,7 @@ class GameScene extends Phaser.Scene {
     for (let r = 0; r < YARD_ROWS; r++) {
       for (let c = 0; c < YARD_COLS; c++) {
         const type = map[r][c];
-        if (type !== 'T' && type !== 'G') continue;
+        if (type !== 'T' && type !== 'G' && type !== 'B') continue;
 
         // Only process from the top-left corner of each contiguous cluster
         const aboveSame = r > 0 && map[r - 1][c] === type;
@@ -432,8 +454,11 @@ class GameScene extends Phaser.Scene {
         while (c + cw < YARD_COLS && map[r][c + cw] === type) cw++;
         while (r + cH < YARD_ROWS && map[r + cH] && map[r + cH][c] === type) cH++;
 
-        if (type === 'G') {
-          // Gardens: auto-mow when all perimeter cells are mowed
+        if (type === 'G' || type === 'B') {
+          // Gardens and bushes/hedges: auto-mow when all perimeter cells
+          // are mowed. Hidden under their own obstacle-layer texture
+          // anyway (depth 3, above the mowed layer's depth 1), so it's
+          // invisible until the whole cluster is cleared.
           const cells = [];
           for (let dr = 0; dr < cH; dr++)
             for (let dc = 0; dc < cw; dc++)
@@ -460,32 +485,33 @@ class GameScene extends Phaser.Scene {
           }
         }
 
-        // Stamp one 32×32 texture per 2×2 sub-block within the cluster.
-        // Trees pick one of a few variants per cluster (not per sub-block)
-        // so a single clump of trees reads as one coherent type instead of
-        // a mix of species crammed together.
-        const key = type === 'T'
-          ? TREE_TYPES[Phaser.Math.Between(0, TREE_TYPES.length - 1)]
-          : 'garden';
-        for (let dr = 0; dr < cH; dr += 2) {
-          for (let dc = 0; dc < cw; dc += 2) {
-            const tx = (YARD_X + c + dc) * CELL + CELL;
-            const ty = (YARD_Y + r + dr) * CELL + CELL;
-            this.obstacleRT.stamp(key, null, tx, ty);
+        if (type === 'B') {
+          // Bushes: one 16×16 texture per single cell (not a 32×32 2-cell
+          // block like trees/gardens use), since a hedge is often a
+          // single-cell-wide row of arbitrary length.
+          for (let dr = 0; dr < cH; dr++) {
+            for (let dc = 0; dc < cw; dc++) {
+              const bx = (YARD_X + c + dc) * CELL + CELL / 2;
+              const by = (YARD_Y + r + dr) * CELL + CELL / 2;
+              this.obstacleRT.stamp('bush', null, bx, by);
+            }
+          }
+        } else {
+          // Stamp one 32×32 texture per 2×2 sub-block within the cluster.
+          // Trees pick one of a few variants per cluster (not per
+          // sub-block) so a single clump of trees reads as one coherent
+          // type instead of a mix of species crammed together.
+          const key = type === 'T'
+            ? TREE_TYPES[Phaser.Math.Between(0, TREE_TYPES.length - 1)]
+            : 'garden';
+          for (let dr = 0; dr < cH; dr += 2) {
+            for (let dc = 0; dc < cw; dc += 2) {
+              const tx = (YARD_X + c + dc) * CELL + CELL;
+              const ty = (YARD_Y + r + dr) * CELL + CELL;
+              this.obstacleRT.stamp(key, null, tx, ty);
+            }
           }
         }
-      }
-    }
-
-    // Bushes/hedges: stamped one per cell (not clustered into 2×2
-    // sub-blocks like trees/gardens) since a hedge is often a single-cell-
-    // wide row of arbitrary length. Permanent obstacles — no auto-mow.
-    for (let r = 0; r < YARD_ROWS; r++) {
-      for (let c = 0; c < YARD_COLS; c++) {
-        if (map[r][c] !== 'B') continue;
-        const bx = (YARD_X + c) * CELL + CELL / 2;
-        const by = (YARD_Y + r) * CELL + CELL / 2;
-        this.obstacleRT.stamp('bush', null, bx, by);
       }
     }
 
