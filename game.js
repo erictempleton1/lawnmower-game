@@ -2032,6 +2032,27 @@ class GameScene extends Phaser.Scene {
       this.player.x = nx;
     } else if (!this.isObstacle(this.player.x, ny)) {
       this.player.y = ny;
+    } else if (dx !== 0 || dy !== 0) {
+      // Corner deadlock: approaching a concave obstacle corner
+      // diagonally can land within isNearGarden()'s edge margin on BOTH
+      // axes at once, a spot where even the single-axis slides above
+      // are also blocked — without this, the mower freezes solid right
+      // at the corner despite the player still holding a direction.
+      // A single nudge, larger than that margin (so it clears in one
+      // step instead of several tiny ones that just get pulled back in
+      // and jitter), away from the obstacle along whichever cardinal
+      // direction is actually open breaks the deadlock.
+      const NUDGE = 7; // isNearGarden()'s MARGIN (6) + 1
+      const nudges = [[0, -NUDGE], [0, NUDGE], [-NUDGE, 0], [NUDGE, 0]];
+      for (const [ndx, ndy] of nudges) {
+        const tx = Phaser.Math.Clamp(this.player.x + ndx, minX, maxX);
+        const ty = Phaser.Math.Clamp(this.player.y + ndy, minY, maxY);
+        if (!this.isObstacle(tx, ty)) {
+          this.player.x = tx;
+          this.player.y = ty;
+          break;
+        }
+      }
     }
 
     const isMoving = Math.abs(dx) > 0 || Math.abs(dy) > 0;
