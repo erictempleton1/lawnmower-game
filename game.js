@@ -68,6 +68,69 @@ const TREE_TYPES = ['tree_round', 'tree_evergreen'];
 // once, before the very first level, not again on every level transition.
 let g_introShown = false;
 
+// ─── Audio ────────────────────────────────────────────────────────────────────
+// Procedurally synthesized (no audio files to vendor) via the raw Web
+// Audio API rather than Phaser's sound manager, which is asset-based.
+// Module-level and created once per page load (not per scene.restart()) —
+// setupAudio() is called from the intro modal's Start button, a genuine
+// user gesture, satisfying the browser's autoplay policy; every level
+// after the first reuses the same context and nodes.
+let g_audioCtx  = null;
+let g_humGain   = null;
+
+function setupAudio() {
+  if (g_audioCtx) return;
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return;
+  g_audioCtx = new Ctx();
+
+  // Mower hum: a single continuous low tone whose gain is modulated by
+  // movement state (see setHumActive()) rather than started/stopped each
+  // time the player moves — oscillators can only be started once, and
+  // ramping gain avoids audible clicks at the transition. Deliberately
+  // quiet and low-pass filtered so it reads as a soft background hum, not
+  // a game-y sound effect — the goal is peaceful, not busy.
+  const osc = g_audioCtx.createOscillator();
+  osc.type = 'triangle';
+  osc.frequency.value = 95;
+  const filter = g_audioCtx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = 300;
+  g_humGain = g_audioCtx.createGain();
+  g_humGain.gain.value = 0;
+  osc.connect(filter);
+  filter.connect(g_humGain);
+  g_humGain.connect(g_audioCtx.destination);
+  osc.start();
+}
+
+function setHumActive(active) {
+  if (!g_audioCtx || !g_humGain) return;
+  g_humGain.gain.linearRampToValueAtTime(active ? 0.05 : 0, g_audioCtx.currentTime + 0.15);
+}
+
+// A soft 4-note major arpeggio, low volume with a quick attack and gentle
+// decay — a small acknowledgment, not a fanfare, matching the rest of the
+// game's low-key tone.
+function playWinChime() {
+  if (!g_audioCtx) return;
+  const notes = [523.25, 659.25, 783.99, 1046.5]; // C5 E5 G5 C6
+  notes.forEach((freq, i) => {
+    const t    = g_audioCtx.currentTime + i * 0.12;
+    const osc  = g_audioCtx.createOscillator();
+    const gain = g_audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(0.08, t + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+    osc.connect(gain);
+    gain.connect(g_audioCtx.destination);
+    osc.start(t);
+    osc.stop(t + 0.4);
+  });
+}
+
 // Pads an authored level map out to YARD_ROWS×YARD_COLS with plain grass,
 // centering the original layout. A no-op once a map is already the right
 // size, so it's safe to call again on scene.restart (which reuses the same
@@ -789,6 +852,7 @@ class GameScene extends Phaser.Scene {
       g_introShown  = true;
       this.started  = true;
       introEl.classList.remove('visible');
+      setupAudio();
       this.scheduleSquirrel();
       this.scheduleBird();
       this.scheduleDeer();
@@ -812,6 +876,7 @@ class GameScene extends Phaser.Scene {
     this.winNextEl.textContent   = isLast ? 'All levels complete!' : `Up next: ${this.allLevels[this.currentLevel + 1].name}`;
     this.winActionEl.textContent = isLast ? 'Tap or press R to restart from L1' : 'Tap or press R for next level';
     this.winEl.classList.add('visible');
+    playWinChime();
   }
 
   hideWin() {
@@ -1171,6 +1236,7 @@ class GameScene extends Phaser.Scene {
     this.pctEl.textContent = Math.floor(pct * 100) + '%';
     if (pct * 100 >= WIN_PCT && !this.won) {
       this.won = true;
+      setHumActive(false);
       this.showWin();
     }
   }
@@ -1216,17 +1282,14 @@ class GameScene extends Phaser.Scene {
       this.player.y = ny;
     }
 
-    if (Math.abs(dx) > 0 || Math.abs(dy) > 0) {
+    const isMoving = Math.abs(dx) > 0 || Math.abs(dy) > 0;
+    if (isMoving) {
       if (Math.abs(dx) >= Math.abs(dy))
         this.player.dir = dx > 0 ? 'right' : 'left';
       else
         this.player.dir = dy > 0 ? 'down' : 'up';
-      // Kept as the actual (dx,dy) vector, not just the dominant-axis dir
-      // above, so mowAt() can tell true diagonal movement apart from
-      // mostly-straight movement — see buildMowedTextures().
-      this.player.moveDX = dx;
-      this.player.moveDY = dy;
     }
+    setHumActive(isMoving);
 
     this.mowAt(this.player.x, this.player.y);
     this.drawPlayer();
