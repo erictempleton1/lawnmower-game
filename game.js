@@ -1,9 +1,14 @@
 // ─── Constants ───────────────────────────────────────────────────────────────
 const CELL = 16;
+// YARD_Y widened (3 -> 5) and BASE_YARD_ROWS shortened (12 -> 8) together so
+// ROWS (= BASE_YARD_ROWS + YARD_Y*2 on desktop/landscape) — and so the
+// overall canvas height H — stays exactly what it was before: a shorter
+// mowable yard with a taller decorative border on top and bottom, not a
+// smaller game window.
 const YARD_X = 3;
-const YARD_Y = 3;
+const YARD_Y = 5;
 const YARD_COLS      = 18;  // fixed — matches every level's authored width
-const BASE_YARD_ROWS = 12;  // authored level height
+const BASE_YARD_ROWS = 8;   // authored level height
 const MAX_YARD_ROWS  = 60;  // safety ceiling — tall phones can genuinely need ~35-40 rows to fill the screen
 
 // Reserves room for the mobile D-pad below the canvas in portrait — must
@@ -610,6 +615,21 @@ class GameScene extends Phaser.Scene {
       bgTrees.push({ key: 'bg_pine', x: margin - 18, y: y + Phaser.Math.Between(-4, 4) });
     for (let y = yardT + margin + 33; y < yardB - margin; y += 66)
       bgTrees.push({ key: 'bg_pine', x: W - margin + 18, y: y + Phaser.Math.Between(-4, 4) });
+
+    // A second, inner depth-row of trees closer to the yard's own top/
+    // bottom edge. The outer row above is anchored a fixed 20px from the
+    // canvas edge — deep enough to reach the yard boundary when the border
+    // was shorter, but a taller border (bigger YARD_Y) would otherwise
+    // leave a bare gap of just grass/wildflowers between that row and the
+    // yard. Only added where there's room for it, mirroring the side
+    // trees' own inner-row guard.
+    const innerTreeY = yardT - 22, innerTreeYB = yardB + 22;
+    if (innerTreeY > margin + 30) {
+      for (let x = margin + 33; x < W - margin; x += 66)
+        bgTrees.push({ key: 'bg_tree', x: x + Phaser.Math.Between(-4, 4), y: innerTreeY + Phaser.Math.Between(-4, 4) });
+      for (let x = margin + 33; x < W - margin; x += 66)
+        bgTrees.push({ key: 'bg_tree', x: x + Phaser.Math.Between(-4, 4), y: innerTreeYB + Phaser.Math.Between(-4, 4) });
+    }
 
     bgTrees.sort((a, b) => a.y - b.y);
     for (const { key, x, y } of bgTrees) rt.stamp(key, null, x, y);
