@@ -382,11 +382,16 @@ class GameScene extends Phaser.Scene {
     this.syncUIOverlay();
     this.scale.on('resize', this.syncUIOverlay, this);
 
-    // A restored win needs the overlay re-shown explicitly — updateHUD()'s
-    // own win check only fires on the pct crossing 100 while !this.won,
-    // which is already false here since it was just restored as true.
+    // Deliberately NOT calling showWin() here: the win overlay is a
+    // full-screen `pointer-events: auto` div that sits above the level nav
+    // buttons and swallows clicks meant for them, so popping it back up on
+    // a mere revisit (rather than an actual live win) left no way to use
+    // #level-prev/#level-next without first tapping through the overlay —
+    // exactly the "stuck, and tapping through it skips a level" bug this
+    // fixes. The mowed grid/pct still show the level as done; this.won
+    // still freezes movement to match; only the intrusive modal is
+    // skipped for a restore.
     if (saved && saved.won) {
-      this.showWin();
       setHumActive(false);
     }
 
