@@ -85,9 +85,10 @@ Purely cosmetic, no collision, no per-level cap (unlike squirrels) — same `sch
 ## Audio
 Procedurally synthesized via the raw Web Audio API (`AudioContext`/`OscillatorNode`/`GainNode`/`BiquadFilterNode`) rather than Phaser's sound manager (which is asset-based) or vendored audio files — no assets to source or host. Module-level (`g_audioCtx`, `g_humGain`), created once per page load by `setupAudio()`, not per `scene.restart()`. `setupAudio()` is called from the intro modal's Start button click specifically because that's a genuine user gesture, satisfying the browser's autoplay policy — calling it any earlier would leave the context stuck `suspended`.
 
-Two sounds, both deliberately quiet and simple to match the game's low-key "mindless peacefulness" tone rather than reading as game-y sound effects:
+Three sounds, all simple and gentle to match the game's low-key "mindless peacefulness" tone rather than reading as game-y sound effects (loud enough to actually register, though — an initial pass at gain 0.05 was nearly inaudible on typical speakers):
 - **Mower hum**: a single continuous low-pass-filtered triangle oscillator, `start()`ed once and never stopped — oscillators can't be restarted, so movement on/off is expressed by ramping `g_humGain`'s gain (via `setHumActive()`, called every frame from `update()` with whether the player moved that frame) rather than starting/stopping the node, which also avoids audible clicks at the transition.
 - **Win chime**: a short 4-note major arpeggio (`playWinChime()`, called from `showWin()`) — one short-lived oscillator+gain pair per note with a quick attack and exponential decay.
+- **Bird chirp**: a quick two-note "tweet-tweet" (`playBirdChirp()`, called once from `launchBird()`), each note a fast upward pitch sweep in the 2-3kHz range — the classic chirp shape — with a very short envelope so it reads as a brief accent alongside the bird's flight, not an alert.
 
 `setHumActive(false)` is called explicitly when the win condition triggers (in `updateHUD()`), since `update()` stops running entirely once `this.won` is true and would otherwise leave the hum wherever it last was.
 

@@ -133,6 +133,30 @@ function playWinChime() {
   });
 }
 
+// A quick two-note "tweet-tweet", each note a fast upward pitch sweep —
+// the classic chirp shape — triggered once when a bird launches (see
+// launchBird()). High-pitched like a real bird call but very short and
+// low volume so it registers as a brief accent, not an alert sound.
+function playBirdChirp() {
+  if (!g_audioCtx) return;
+  for (let i = 0; i < 2; i++) {
+    const t    = g_audioCtx.currentTime + i * 0.16;
+    const osc  = g_audioCtx.createOscillator();
+    const gain = g_audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(2200, t);
+    osc.frequency.exponentialRampToValueAtTime(3200, t + 0.06);
+    osc.frequency.exponentialRampToValueAtTime(2400, t + 0.11);
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(0.12, t + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.13);
+    osc.connect(gain);
+    gain.connect(g_audioCtx.destination);
+    osc.start(t);
+    osc.stop(t + 0.14);
+  }
+}
+
 // Pads an authored level map out to YARD_ROWS×YARD_COLS with plain grass,
 // centering the original layout. A no-op once a map is already the right
 // size, so it's safe to call again on scene.restart (which reuses the same
@@ -1057,6 +1081,7 @@ class GameScene extends Phaser.Scene {
       dx = 0;
     }
     this.bird = { active: true, x, y, dx, dy };
+    playBirdChirp();
   }
 
   updateBird(dt) {
