@@ -130,6 +130,7 @@ class GameScene extends Phaser.Scene {
     this.squirrelCount  = 0;
     this.bird           = { active: false };
     this.deer           = { active: false };
+    this.fox            = { active: false };
     // Gated on the intro modal for the very first level only — see
     // buildIntroOverlay(). Already-dismissed (g_introShown) on every
     // level after that, so play starts immediately without re-showing it.
@@ -156,12 +157,15 @@ class GameScene extends Phaser.Scene {
     this.birdGfx.setDepth(4);
     this.deerGfx = this.add.graphics();
     this.deerGfx.setDepth(4);
+    this.foxGfx = this.add.graphics();
+    this.foxGfx.setDepth(4);
 
     this.mowAt(this.player.x, this.player.y);
     if (g_introShown) {
       this.scheduleSquirrel();
       this.scheduleBird();
       this.scheduleDeer();
+      this.scheduleFox();
     }
 
     document.getElementById('loading-screen')?.classList.add('hidden');
@@ -757,9 +761,11 @@ class GameScene extends Phaser.Scene {
       if (this.squirrelTimer) this.squirrelTimer.remove();
       if (this.birdTimer)     this.birdTimer.remove();
       if (this.deerTimer)     this.deerTimer.remove();
+      if (this.foxTimer)      this.foxTimer.remove();
       this.squirrelGfx?.clear();
       this.birdGfx?.clear();
       this.deerGfx?.clear();
+      this.foxGfx?.clear();
     });
   }
 
@@ -778,6 +784,7 @@ class GameScene extends Phaser.Scene {
       this.scheduleSquirrel();
       this.scheduleBird();
       this.scheduleDeer();
+      this.scheduleFox();
     };
     // Assigned (not addEventListener) since this button persists across
     // scene.restart(), matching the win-overlay/dpad pattern elsewhere.
@@ -1079,6 +1086,78 @@ class GameScene extends Phaser.Scene {
     g.fillRect(headX + 3, y - 11, 2, 3);
   }
 
+  // ── Fox ───────────────────────────────────────────────────────────────────
+  // Same peek/hold/retreat mechanic as the deer, independent timer, so
+  // either or both can show up during a level. Rust-orange with a pale
+  // tail tip to read distinctly from the deer's muted brown at a glance.
+
+  scheduleFox() {
+    if (this.won) return;
+    this.foxTimer = this.time.delayedCall(
+      Phaser.Math.Between(18000, 35000), this.launchFox, [], this);
+  }
+
+  launchFox() {
+    if (this.won) return;
+    const onLeft = Phaser.Math.Between(0, 1) === 0;
+    const y = Phaser.Math.Between(YARD_Y * CELL + 20, (YARD_Y + YARD_ROWS) * CELL - 20);
+    this.fox = { active: true, onLeft, y, phase: 'peek', elapsed: 0, t: 0 };
+  }
+
+  updateFox(dt) {
+    if (!this.fox.active) return;
+    const PEEK_MS = 800, HOLD_MS = 1800, RETREAT_MS = 800;
+    this.fox.elapsed += dt * 1000;
+    if (this.fox.phase === 'peek') {
+      this.fox.t = Math.min(1, this.fox.elapsed / PEEK_MS);
+      if (this.fox.elapsed >= PEEK_MS) { this.fox.phase = 'hold'; this.fox.elapsed = 0; }
+    } else if (this.fox.phase === 'hold') {
+      this.fox.t = 1;
+      if (this.fox.elapsed >= HOLD_MS) { this.fox.phase = 'retreat'; this.fox.elapsed = 0; }
+    } else {
+      this.fox.t = Math.max(0, 1 - this.fox.elapsed / RETREAT_MS);
+      if (this.fox.elapsed >= RETREAT_MS) {
+        this.fox.active = false;
+        this.foxGfx.clear();
+        this.scheduleFox();
+        return;
+      }
+    }
+    this.drawFox();
+  }
+
+  drawFox() {
+    const g = this.foxGfx;
+    g.clear();
+    const { onLeft, y, t } = this.fox;
+    const peekDepth = 20;
+    const baseX = onLeft ? -14 : W + 14;
+    const x      = onLeft ? baseX + peekDepth * t : baseX - peekDepth * t;
+    const headX  = onLeft ? x + 6 : x - 6;
+    const tailX  = onLeft ? x - 7 : x + 7; // opposite end from head
+
+    g.fillStyle(0x000000, 0.2);
+    g.fillEllipse(x, y + 9, 16, 4);
+    // Bushy tail, opposite end from the head, with a pale tip
+    g.fillStyle(0x9a5030);
+    g.fillRect(tailX - 2, y - 2, 5, 6);
+    g.fillStyle(0xe8ddc0);
+    g.fillRect(tailX - 2, y - 4, 3, 3);
+    // Body
+    g.fillStyle(0xb3611f);
+    g.fillRect(x - 6, y - 4, 12, 9);
+    // Cream chest
+    g.fillStyle(0xe8ddc0);
+    g.fillRect(x - 2, y, 5, 5);
+    // Head
+    g.fillStyle(0xb3611f);
+    g.fillRect(headX - 3, y - 9, 7, 7);
+    // Ears, dark tips
+    g.fillStyle(0x2a1810);
+    g.fillRect(headX - 2, y - 12, 2, 3);
+    g.fillRect(headX + 3, y - 12, 2, 3);
+  }
+
   updateHUD() {
     const pct = this.mowedCount / this.totalCells;
     this.pctEl.textContent = Math.floor(pct * 100) + '%';
@@ -1146,6 +1225,7 @@ class GameScene extends Phaser.Scene {
     this.updateSquirrel(dt);
     this.updateBird(dt);
     this.updateDeer(dt);
+    this.updateFox(dt);
     this.drawJoystick();
   }
 }
