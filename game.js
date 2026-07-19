@@ -409,27 +409,35 @@ class GameScene extends Phaser.Scene {
 
     // Scattered taller background trees around the border, purely
     // cosmetic (no collision — the border is already unreachable).
+    // Collected and y-sorted before stamping (painter's algorithm) rather
+    // than stamped in fixed type order (all bg_tree, then all bg_pine) —
+    // with a fixed order, whichever type stamps last always draws on top
+    // of the other wherever they touch, so a pine's trunk could poke out
+    // over a round tree's canopy even after tightening the jitter/spacing
+    // to reduce how often they touch at all. Sorting by y so whichever
+    // tree sits lower (closer, in the implied top-down depth) always
+    // correctly occludes the one above it fixes this regardless of type
+    // or any residual overlap.
     const margin = 20;
+    const bgTrees = [];
     for (let x = margin; x < W - margin; x += 66)
-      rt.stamp('bg_tree', null, x + Phaser.Math.Between(-4, 4), margin);
+      bgTrees.push({ key: 'bg_tree', x: x + Phaser.Math.Between(-4, 4), y: margin });
     for (let x = margin; x < W - margin; x += 66)
-      rt.stamp('bg_tree', null, x + Phaser.Math.Between(-4, 4), H - margin);
+      bgTrees.push({ key: 'bg_tree', x: x + Phaser.Math.Between(-4, 4), y: H - margin });
     for (let y = yardT + margin; y < yardB - margin; y += 66)
-      rt.stamp('bg_tree', null, margin, y + Phaser.Math.Between(-4, 4));
+      bgTrees.push({ key: 'bg_tree', x: margin, y: y + Phaser.Math.Between(-4, 4) });
     for (let y = yardT + margin; y < yardB - margin; y += 66)
-      rt.stamp('bg_tree', null, W - margin, y + Phaser.Math.Between(-4, 4));
-
+      bgTrees.push({ key: 'bg_tree', x: W - margin, y: y + Phaser.Math.Between(-4, 4) });
     // Pine trees staggered in alongside the side bg_trees — offset half a
     // step vertically and tucked further out toward the outer edge, so
-    // the two rows interleave into a layered tree line instead of
-    // overlapping. Jitter is kept small on both this and the bg_tree
-    // loops above — the original ±12/±10px jitter combined with only an
-    // 8px x-offset let a pine land almost on top of a round tree often
-    // enough that its trunk would poke out through the other's canopy.
+    // the two rows interleave into a layered tree line.
     for (let y = yardT + margin + 33; y < yardB - margin; y += 66)
-      rt.stamp('bg_pine', null, margin - 18, y + Phaser.Math.Between(-4, 4));
+      bgTrees.push({ key: 'bg_pine', x: margin - 18, y: y + Phaser.Math.Between(-4, 4) });
     for (let y = yardT + margin + 33; y < yardB - margin; y += 66)
-      rt.stamp('bg_pine', null, W - margin + 18, y + Phaser.Math.Between(-4, 4));
+      bgTrees.push({ key: 'bg_pine', x: W - margin + 18, y: y + Phaser.Math.Between(-4, 4) });
+
+    bgTrees.sort((a, b) => a.y - b.y);
+    for (const { key, x, y } of bgTrees) rt.stamp(key, null, x, y);
 
     rt.render();
     g.destroy();
