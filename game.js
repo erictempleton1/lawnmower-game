@@ -1,8 +1,12 @@
 // ─── Constants ───────────────────────────────────────────────────────────────
 const CELL = 16;
-const YARD_X = 3;
+// YARD_X widened (3 -> 5) and YARD_COLS narrowed (18 -> 14) together so
+// COLS (= YARD_COLS + YARD_X*2) — and so the overall canvas width W — stays
+// exactly what it was before: a narrower mowable yard with a wider
+// decorative border on both sides, not a smaller game window.
+const YARD_X = 5;
 const YARD_Y = 3;
-const YARD_COLS      = 18;  // fixed — matches every level's authored width
+const YARD_COLS      = 14;  // fixed — matches every level's authored width
 const BASE_YARD_ROWS = 12;  // authored level height
 const MAX_YARD_ROWS  = 60;  // safety ceiling — tall phones can genuinely need ~35-40 rows to fill the screen
 
@@ -610,6 +614,26 @@ class GameScene extends Phaser.Scene {
       bgTrees.push({ key: 'bg_pine', x: margin - 18, y: y + Phaser.Math.Between(-4, 4) });
     for (let y = yardT + margin + 33; y < yardB - margin; y += 66)
       bgTrees.push({ key: 'bg_pine', x: W - margin + 18, y: y + Phaser.Math.Between(-4, 4) });
+
+    // A second, inner depth-row of trees/pines closer to the yard's own
+    // edge. The outer row above is anchored a fixed 20px from the canvas
+    // edge — deep enough to reach the yard boundary when the border was
+    // narrower, but a wider border (bigger YARD_X) would otherwise leave a
+    // bare gap of just grass/wildflowers between that row and the yard.
+    // Only added where there's room for it (skipped if the border's too
+    // narrow to fit a second row without the two colliding).
+    const innerTreeX  = yardL - 22, innerTreeXR = yardR + 22;
+    const innerPineX  = innerTreeX - 18, innerPineXR = innerTreeXR + 18;
+    if (innerTreeX > margin + 30) {
+      for (let y = yardT + margin; y < yardB - margin; y += 66)
+        bgTrees.push({ key: 'bg_tree', x: innerTreeX + Phaser.Math.Between(-4, 4), y: y + Phaser.Math.Between(-4, 4) });
+      for (let y = yardT + margin; y < yardB - margin; y += 66)
+        bgTrees.push({ key: 'bg_tree', x: innerTreeXR + Phaser.Math.Between(-4, 4), y: y + Phaser.Math.Between(-4, 4) });
+      for (let y = yardT + margin + 33; y < yardB - margin; y += 66)
+        bgTrees.push({ key: 'bg_pine', x: innerPineX + Phaser.Math.Between(-4, 4), y: y + Phaser.Math.Between(-4, 4) });
+      for (let y = yardT + margin + 33; y < yardB - margin; y += 66)
+        bgTrees.push({ key: 'bg_pine', x: innerPineXR + Phaser.Math.Between(-4, 4), y: y + Phaser.Math.Between(-4, 4) });
+    }
 
     bgTrees.sort((a, b) => a.y - b.y);
     for (const { key, x, y } of bgTrees) rt.stamp(key, null, x, y);
