@@ -157,6 +157,26 @@ function playBirdChirp() {
   }
 }
 
+// A short, punchy bark — sawtooth with a fast downward pitch sweep and a
+// quick decay — triggered once when the dog startles and scampers off
+// (see updateDog()).
+function playDogBark() {
+  if (!g_audioCtx) return;
+  const t    = g_audioCtx.currentTime;
+  const osc  = g_audioCtx.createOscillator();
+  const gain = g_audioCtx.createGain();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(340, t);
+  osc.frequency.exponentialRampToValueAtTime(160, t + 0.09);
+  gain.gain.setValueAtTime(0, t);
+  gain.gain.linearRampToValueAtTime(0.2, t + 0.008);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
+  osc.connect(gain);
+  gain.connect(g_audioCtx.destination);
+  osc.start(t);
+  osc.stop(t + 0.15);
+}
+
 // Pads an authored level map out to YARD_ROWS×YARD_COLS with plain grass,
 // centering the original layout. A no-op once a map is already the right
 // size, so it's safe to call again on scene.restart (which reuses the same
@@ -234,6 +254,14 @@ class GameScene extends Phaser.Scene {
 
     this.setupPlayer();
     this.setupInput();
+
+    // Dog: sits somewhere away from the player's start cell for the whole
+    // level, reacting to proximity every frame rather than on a timer (see
+    // updateDog()) — always present, unlike the scheduled wildlife below.
+    const dogSpot = this.pickDogSpot(this.player.x, this.player.y, 80)
+      ?? { x: (YARD_X + YARD_COLS - 1) * CELL + CELL / 2, y: (YARD_Y + YARD_ROWS - 1) * CELL + CELL / 2 };
+    this.dog = { x: dogSpot.x, y: dogSpot.y, state: 'idle', cooldownRemaining: 0 };
+
     this.buildHUD();
     this.buildWinOverlay();
     this.buildIntroOverlay();
@@ -248,6 +276,9 @@ class GameScene extends Phaser.Scene {
     this.deerGfx.setDepth(4);
     this.foxGfx = this.add.graphics();
     this.foxGfx.setDepth(4);
+    this.dogGfx = this.add.graphics();
+    this.dogGfx.setDepth(4);
+    this.drawDog();
 
     this.mowAt(this.player.x, this.player.y);
     if (g_introShown) {
@@ -699,6 +730,9 @@ class GameScene extends Phaser.Scene {
       const sqr = Math.floor((this.squirrel.y - YARD_Y * CELL) / CELL);
       if (gc === sqc && gr === sqr) return true;
     }
+    const dgc = Math.floor((this.dog.x - YARD_X * CELL) / CELL);
+    const dgr = Math.floor((this.dog.y - YARD_Y * CELL) / CELL);
+    if (gc === dgc && gr === dgr) return true;
     return false;
   }
 
@@ -863,6 +897,7 @@ class GameScene extends Phaser.Scene {
       this.birdGfx?.clear();
       this.deerGfx?.clear();
       this.foxGfx?.clear();
+      this.dogGfx?.clear();
     });
   }
 
@@ -921,6 +956,9 @@ class GameScene extends Phaser.Scene {
       const sqr = Math.floor((this.squirrel.y - YARD_Y * CELL) / CELL);
       if (gc === sqc && gr === sqr) return;
     }
+    const dgc = Math.floor((this.dog.x - YARD_X * CELL) / CELL);
+    const dgr = Math.floor((this.dog.y - YARD_Y * CELL) / CELL);
+    if (gc === dgc && gr === dgr) return;
 
     const cellH = this.grid[gr][gc];
     if (cellH !== 0 && this.deckHeight >= cellH) return;
@@ -1258,6 +1296,87 @@ class GameScene extends Phaser.Scene {
     g.fillRect(headX + 3, y - 12, 2, 3);
   }
 
+  // ── Dog ───────────────────────────────────────────────────────────────────
+  // Sits in the yard (not the border, unlike bird/deer/fox) for the whole
+  // level. Reacts to proximity every frame rather than a scheduled timer:
+  // when the player gets within TRIGGER_DIST it barks and scampers — a
+  // short linear slide, not a teleport — to a spot picked away from the
+  // player, then waits out a cooldown before it can be startled again.
+
+  // Scans the level's plain-grass ('.') cells for ones at least minDistPx
+  // from (avoidX, avoidY), in world pixel coordinates; returns a random
+  // match's cell-center, or null if none qualify (used both for the dog's
+  // initial spawn spot and each scamper destination).
+  pickDogSpot(avoidX, avoidY, minDistPx) {
+    const map = this.levelData.map;
+    const candidates = [];
+    for (let r = 0; r < YARD_ROWS; r++) {
+      for (let c = 0; c < YARD_COLS; c++) {
+        if (map[r][c] !== '.') continue;
+        const x = (YARD_X + c) * CELL + CELL / 2;
+        const y = (YARD_Y + r) * CELL + CELL / 2;
+        if (Math.hypot(x - avoidX, y - avoidY) < minDistPx) continue;
+        candidates.push({ x, y });
+      }
+    }
+    if (candidates.length === 0) return null;
+    return candidates[Phaser.Math.Between(0, candidates.length - 1)];
+  }
+
+  updateDog(dt) {
+    const TRIGGER_DIST = 48, FLEE_MS = 400, COOLDOWN_MS = 1500;
+    if (this.dog.state === 'idle') {
+      if (this.dog.cooldownRemaining > 0) {
+        this.dog.cooldownRemaining -= dt * 1000;
+      } else {
+        const dist = Math.hypot(this.player.x - this.dog.x, this.player.y - this.dog.y);
+        if (dist < TRIGGER_DIST) {
+          // Picked away from the player (not just the dog's old spot) so
+          // the new resting place can't immediately re-trigger a flee.
+          const spot = this.pickDogSpot(this.player.x, this.player.y, 100);
+          if (spot) {
+            this.dog.state       = 'fleeing';
+            this.dog.fleeFromX   = this.dog.x;
+            this.dog.fleeFromY   = this.dog.y;
+            this.dog.fleeToX     = spot.x;
+            this.dog.fleeToY     = spot.y;
+            this.dog.fleeElapsed = 0;
+            playDogBark();
+          }
+        }
+      }
+    } else {
+      this.dog.fleeElapsed += dt * 1000;
+      const t = Math.min(1, this.dog.fleeElapsed / FLEE_MS);
+      this.dog.x = Phaser.Math.Linear(this.dog.fleeFromX, this.dog.fleeToX, t);
+      this.dog.y = Phaser.Math.Linear(this.dog.fleeFromY, this.dog.fleeToY, t);
+      if (t >= 1) {
+        this.dog.state             = 'idle';
+        this.dog.cooldownRemaining = COOLDOWN_MS;
+      }
+    }
+    this.drawDog();
+  }
+
+  drawDog() {
+    const g = this.dogGfx;
+    g.clear();
+    const x   = Math.round(this.dog.x);
+    const y   = Math.round(this.dog.y);
+    const bob = this.dog.state === 'fleeing' && Math.floor(Date.now() / 60) % 2 === 1 ? -1 : 0;
+
+    g.fillStyle(0x000000, 0.25);
+    g.fillEllipse(x, y + 6, 12, 3);
+    g.fillStyle(0x181818);
+    g.fillRect(x - 5, y - 2 + bob, 10, 7); // body
+    g.fillRect(x + 3, y - 4 + bob, 4, 5);  // head
+    g.fillStyle(0x0a0a0a);
+    g.fillRect(x + 4, y - 6 + bob, 2, 3);  // ear
+    g.fillRect(x - 6, y - 1 + bob, 3, 3);  // tail
+    g.fillStyle(0xffffff, 0.8);
+    g.fillRect(x + 6, y - 3 + bob, 1, 1);  // eye highlight
+  }
+
   updateHUD() {
     const pct = this.mowedCount / this.totalCells;
     this.pctEl.textContent = Math.floor(pct * 100) + '%';
@@ -1324,6 +1443,7 @@ class GameScene extends Phaser.Scene {
     this.updateBird(dt);
     this.updateDeer(dt);
     this.updateFox(dt);
+    this.updateDog(dt);
     this.drawJoystick();
   }
 }

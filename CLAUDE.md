@@ -28,7 +28,7 @@ BASE_YARD_ROWS = 12 (authored level height)
 | 1 | Mowed grass RT |
 | 2 | Player gfx |
 | 3 | Obstacle RT (trees + gardens) |
-| 4 | Squirrel gfx |
+| 4 | Squirrel, bird, deer, fox, dog gfx |
 | 10 | Joystick gfx, HUD |
 
 Player is at depth 2 so he walks visually under the tree canopy (depth 3).
@@ -82,13 +82,25 @@ No progress bar — just the level indicator (`#hud-level`, still in the canvas-
 ## Birds, Deer, and Fox
 Purely cosmetic, no collision, no per-level cap (unlike squirrels) — same `schedule*`/`launch*`/`update*`/`draw*` structure as the squirrel, but all are confined to the border margin and never enter the yard. Birds (`scheduleBird`/`launchBird`/`updateBird`/`drawBird`) pick one of the 4 border strips and fly straight across it (a 2-line wing-flap silhouette, light-colored — a dark one barely shows up against the similarly-dark wild grass border — alternating every ~120ms, plus a small sine-wave flutter perpendicular to travel that's purely visual and doesn't affect the tracked x/y) every 15-30s, despawning once it's well past the far edge. Deer and fox (`scheduleDeer`/`scheduleFox` etc.) peek out from the left or right border independently of each other (either, both, or neither can be active at once) on their own random interval: a 3-phase `peek`/`hold`/`retreat` state machine (`this.deer.t`/`this.fox.t` goes 0→1→0) slides a small body partway in from off-canvas, holds, then retreats — the peek depth is capped well short of the yard boundary. Deer use the same muted palette as `bg_tree`/`bg_pine`; the fox is rust-orange with a pale chest/tail-tip so the two read distinctly from each other at a glance.
 
+## Dog
+Unlike bird/deer/fox, the dog is **in the yard itself** (not the border) and present for the whole level rather than scheduled — it's initialized once in `create()` via `pickDogSpot(this.player.x, this.player.y, 80)`, which scans `this.levelData.map` for plain-grass (`'.'`) cells at least the given pixel distance from a point and returns a random match's cell-center (or `null`, falling back to the yard's bottom-right corner). It has real collision, mirroring the squirrel's exact-cell block in both `isObstacle()` and `mowAt()` (blocks only the dog's current grid cell, always, no `.active` flag needed since the dog always exists).
+
+`updateDog(dt)`, called every frame from `update()` (no `schedule*`/timer — it reacts to proximity, not an interval), is a 2-state machine:
+- **idle**: once any post-flee cooldown (`cooldownRemaining`, 1500ms) has elapsed, checks `Math.hypot()` distance to the player against `TRIGGER_DIST` (48px, ~3 cells); if within range, calls `pickDogSpot(this.player.x, this.player.y, 100)` — deliberately keyed off the *player's* position rather than the dog's own old spot, so the destination is guaranteed far enough from the player to not immediately re-trigger — and switches to `fleeing`, plus fires `playDogBark()`.
+- **fleeing**: linearly interpolates (`Phaser.Math.Linear`) from the old spot to the new one over `FLEE_MS` (400ms), then drops back to `idle` and starts the cooldown.
+
+`drawDog()` is simple black pixel-art (body/head/ear/tail rects + a small eye highlight) with a 1px vertical bob while `state === 'fleeing'`, same bob technique as the squirrel's run animation, for a "scampering" read.
+
+`playDogBark()` (module-level, alongside the other audio functions below) is a short sawtooth oscillator sweeping 340Hz→160Hz with a fast attack and quick exponential decay — punchy and momentary rather than alarming, consistent with the game's overall subtle audio approach.
+
 ## Audio
 Procedurally synthesized via the raw Web Audio API (`AudioContext`/`OscillatorNode`/`GainNode`/`BiquadFilterNode`) rather than Phaser's sound manager (which is asset-based) or vendored audio files — no assets to source or host. Module-level (`g_audioCtx`, `g_humGain`), created once per page load by `setupAudio()`, not per `scene.restart()`. `setupAudio()` is called from the intro modal's Start button click specifically because that's a genuine user gesture, satisfying the browser's autoplay policy — calling it any earlier would leave the context stuck `suspended`.
 
-Three sounds, all simple and gentle to match the game's low-key "mindless peacefulness" tone rather than reading as game-y sound effects (loud enough to actually register, though — an initial pass at gain 0.05 was nearly inaudible on typical speakers):
+Four sounds, all simple and gentle to match the game's low-key "mindless peacefulness" tone rather than reading as game-y sound effects (loud enough to actually register, though — an initial pass at gain 0.05 was nearly inaudible on typical speakers):
 - **Mower hum**: a single continuous low-pass-filtered triangle oscillator, `start()`ed once and never stopped — oscillators can't be restarted, so movement on/off is expressed by ramping `g_humGain`'s gain (via `setHumActive()`, called every frame from `update()` with whether the player moved that frame) rather than starting/stopping the node, which also avoids audible clicks at the transition.
 - **Win chime**: a short 4-note major arpeggio (`playWinChime()`, called from `showWin()`) — one short-lived oscillator+gain pair per note with a quick attack and exponential decay.
 - **Bird chirp**: a quick two-note "tweet-tweet" (`playBirdChirp()`, called once from `launchBird()`), each note a fast upward pitch sweep in the 2-3kHz range — the classic chirp shape — with a very short envelope so it reads as a brief accent alongside the bird's flight, not an alert.
+- **Dog bark**: a short sawtooth sweep from 340Hz down to 160Hz (`playDogBark()`, called once from `updateDog()` when the dog startles — see the Dog section above) with a fast attack and quick decay, punchy but momentary.
 
 `setHumActive(false)` is called explicitly when the win condition triggers (in `updateHUD()`), since `update()` stops running entirely once `this.won` is true and would otherwise leave the hum wherever it last was.
 
