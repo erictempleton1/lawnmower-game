@@ -133,7 +133,12 @@ class GameScene extends Phaser.Scene {
     this.buildMowedLayer();
     this.buildObstacleLayer();
 
-    this.totalCells    = YARD_ROWS * YARD_COLS;
+    // Bushes/hedges are permanent obstacles with no auto-mow (unlike
+    // gardens, which eventually add their cells to mowedCount once their
+    // perimeter is mowed) — excluded here so 100% stays reachable.
+    let bushCells = 0;
+    for (const row of this.levelData.map) for (const ch of row) if (ch === 'B') bushCells++;
+    this.totalCells = YARD_ROWS * YARD_COLS - bushCells;
     this.sprinklerGfx  = this.add.graphics();
     this.sprinklerGfx.setDepth(4);
 
@@ -182,10 +187,10 @@ class GameScene extends Phaser.Scene {
   buildLevelTextures() {
     const S = CELL * 2; // 32px — fits a 2×2 cell block
 
-    // Round / deciduous tree — 32×32 pixel art. All three tree variants
-    // below keep the trunk in the same y=18..31 footprint so the single
-    // shared trunk-collision offset in buildObstacleLayer() (ty + 8) lines
-    // up with all of them without needing a per-type adjustment.
+    // Round / deciduous tree — 32×32 pixel art. Both tree variants below
+    // keep the trunk in the same y=18..31 footprint so the shared
+    // trunk-collision offset in buildObstacleLayer() (ty + 8) lines up
+    // with either without needing a per-type adjustment.
     const tg = this.make.graphics({ add: false });
     tg.fillStyle(0x000000, 0.2);
     tg.fillEllipse(16, 29, 24, 6);          // ground shadow
@@ -231,6 +236,24 @@ class GameScene extends Phaser.Scene {
     te.fillTriangle(16, 1, 16, 20, 21, 12); // highlight sliver down one side
     te.generateTexture('tree_evergreen', S, S);
     te.destroy();
+
+    // Bush / hedge — 16×16, one per grid cell (not a 32×32 2-cell block
+    // like trees/gardens), since hedges are laid out as irregular
+    // single-cell-wide rows in level data and need that finer granularity.
+    const tb = this.make.graphics({ add: false });
+    tb.fillStyle(0x000000, 0.15);
+    tb.fillEllipse(8, 14, 12, 3);           // ground shadow
+    tb.fillStyle(0x2a4a18);
+    tb.fillCircle(8, 9, 7);                 // base lump
+    tb.fillStyle(0x3a6a22);
+    tb.fillCircle(5, 7, 5);
+    tb.fillCircle(11, 8, 5);
+    tb.fillStyle(0x4a8a2a);
+    tb.fillCircle(8, 6, 4);
+    tb.fillStyle(0x5aa034, 0.7);
+    tb.fillCircle(6, 4, 2.5);               // highlight
+    tb.generateTexture('bush', CELL, CELL);
+    tb.destroy();
 
     // Garden bed — 32×32 pixel art
     const gg = this.make.graphics({ add: false });
@@ -323,12 +346,14 @@ class GameScene extends Phaser.Scene {
     this.obstacleGrid = Array.from({ length: YARD_ROWS }, () => new Uint8Array(YARD_COLS));
     this.obstacleClusters = [];
 
-    // Gardens: all cells grid-blocked.
-    // Trees: no grid blocking — trunk uses pixel-radius collision so the mower
-    // can enter and mow the cell but can't pass through the trunk post.
+    // Gardens and bushes/hedges: all cells grid-blocked (isNearGarden()'s
+    // edge-collision check applies to any obstacleGrid cell, not just
+    // gardens specifically). Trees: no grid blocking — trunk uses
+    // pixel-radius collision so the mower can enter and mow the cell but
+    // can't pass through the trunk post.
     for (let r = 0; r < YARD_ROWS; r++)
       for (let c = 0; c < YARD_COLS; c++)
-        if (map[r][c] === 'G') this.obstacleGrid[r][c] = 1;
+        if (map[r][c] === 'G' || map[r][c] === 'B') this.obstacleGrid[r][c] = 1;
 
     this.trunkPositions = [];
 
@@ -393,6 +418,18 @@ class GameScene extends Phaser.Scene {
             this.obstacleRT.stamp(key, null, tx, ty);
           }
         }
+      }
+    }
+
+    // Bushes/hedges: stamped one per cell (not clustered into 2×2
+    // sub-blocks like trees/gardens) since a hedge is often a single-cell-
+    // wide row of arbitrary length. Permanent obstacles — no auto-mow.
+    for (let r = 0; r < YARD_ROWS; r++) {
+      for (let c = 0; c < YARD_COLS; c++) {
+        if (map[r][c] !== 'B') continue;
+        const bx = (YARD_X + c) * CELL + CELL / 2;
+        const by = (YARD_Y + r) * CELL + CELL / 2;
+        this.obstacleRT.stamp('bush', null, bx, by);
       }
     }
 

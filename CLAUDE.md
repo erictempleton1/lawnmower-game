@@ -6,7 +6,7 @@ Pixel art top-down lawnmower game. Phaser 4.2.1, vanilla JS, no build step. Depl
 ## Key Files
 - `game.js` — all game logic (single file)
 - `index.html` — canvas host + DOM UI overlay + loading screen
-- `levels/level-0N.json` — level maps (T=tree, G=garden, .=grass)
+- `levels/level-0N.json` — level maps (T=tree, G=garden, B=bush/hedge, .=grass)
 - `vendor/phaser.min.js` — Phaser 4.2.1, vendored locally (not CDN) to avoid a third-party DNS/TLS roundtrip on load. To bump the Phaser version, manually re-download and overwrite this file.
 
 ## Loading Screen
@@ -47,11 +47,12 @@ Player is at depth 2 so he walks visually under the tree canopy (depth 3).
 UI text lives in `#ui-canvas` (a `position:absolute` div over the canvas) to avoid the `image-rendering: pixelated` CSS blurring canvas text. `syncUIOverlay()` reads `canvasBounds` and applies a CSS `scale()` transform to match the Phaser FIT scale.
 
 ## Obstacle System
-- `obstacleGrid[r][c]` — gardens only (full block, auto-mow via `checkClusterCompletion`)
+- `obstacleGrid[r][c]` — gardens and bushes/hedges (full block); trees don't set this
 - `trunkPositions[]` — tree trunk pixel-radius collision (6px); player can enter and mow the cell but can't pass through
-- `obstacleClusters[]` — gardens only; auto-mow cells when all perimeter cells are mowed
-- `isNearGarden()` — garden collision samples a small cross of points around the player (±6px, matching the mower's visual half-width) rather than just the exact center, so the mower's sprite stops right at a garden's edge instead of visually overlapping into it before the single tracked point crosses the cell boundary
+- `obstacleClusters[]` — gardens only; auto-mow cells when all perimeter cells are mowed. Bushes/hedges are also `obstacleGrid`-blocked but have no cluster/auto-mow entry — they're permanent obstacles, which is why `this.totalCells` (in `create()`) explicitly subtracts bush cell count from `YARD_ROWS * YARD_COLS`, or 100% would be unreachable
+- `isNearGarden()` — despite the name, this is the general obstacle-edge collision check (applies to any `obstacleGrid`-blocked cell — gardens and bushes alike): it samples a small cross of points around the player (±6px, matching the mower's visual half-width) rather than just the exact center, so the mower's sprite stops right at the edge instead of visually overlapping into it before the single tracked point crosses the cell boundary
 - `TREE_TYPES` (`tree_round`, `tree_evergreen`) — one is picked at random per contiguous tree cluster in `buildObstacleLayer()` (not per 2×2 sub-block), so a single clump of trees reads as one coherent species. Both keep the trunk in the same local y=18..31 footprint so the shared `ty + 8` trunk-collision offset works for either without a per-type adjustment. (A third variant, `tree_willow`, was tried and dropped — didn't read well; see git history around 2026-07-18 if revisiting.)
+- Bushes/hedges (`B` in level maps) stamp the single `bush` texture **per cell** (16×16, not the 32×32 2-cell blocks trees/gardens use), since a hedge is typically a single-cell-wide row of arbitrary length rather than a 2×2-aligned cluster
 
 ## Mowed Grass Rendering
 Mowed grass is **blocky and grid-aligned, one full cell at a time**. `mowAt(px, py)` figures out which grid cell the player is in and, if it's not already mowed to this depth, stamps the single `mowed_H_full` (16×16, per deck height) texture at that cell's exact center via `this.mowedRT.stamp()`. There's only one texture shape — always full-cell, never a narrower mower-width variant — which is what makes this gap-free on any path (straight, diagonal, turn, parallel lanes) and impossible to bleed past the yard border: every stamp lands at exact grid coordinates already bounds-checked against `YARD_COLS`/`YARD_ROWS`.
