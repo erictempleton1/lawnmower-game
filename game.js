@@ -1387,22 +1387,39 @@ class GameScene extends Phaser.Scene {
     const x = Math.round(this.dog.x);
     const y = Math.round(this.dog.y);
 
+    // Warm brown fur with a tan muzzle patch and dark ears/nose — a flat
+    // near-black palette plus straight-up ears (the original look) read as
+    // a rabbit rather than a dog, so the fix leans on color and floppy,
+    // outward-drooping ears together rather than either alone.
+    const FUR      = 0x6b4423;
+    const FUR_DARK = 0x4a2f18;
+    const MUZZLE   = 0xc79a5e;
+
     if (this.dog.state !== 'fleeing') {
       // Sitting: low, wide haunches with the chest/head held upright and
       // the tail curled in at the side — a distinctly "at rest" silhouette
       // rather than just the running pose standing still.
       g.fillStyle(0x000000, 0.25);
       g.fillEllipse(x, y + 6, 12, 3);
-      g.fillStyle(0x181818);
+      g.fillStyle(FUR);
       g.fillEllipse(x, y + 2, 11, 8);  // haunches, low and wide
       g.fillRect(x - 3, y - 6, 6, 7);  // upright chest
+      // Floppy ears drooping down from the sides of the head, angled
+      // outward — the stick-straight-up rects this replaced were the main
+      // "bunny ear" culprit.
+      g.fillStyle(FUR_DARK);
+      g.fillTriangle(x - 3, y - 10, x - 6, y - 5, x - 1, y - 7);
+      g.fillTriangle(x + 2, y - 10, x + 5, y - 5, x + 0, y - 7);
+      g.fillStyle(FUR);
       g.fillRect(x - 3, y - 10, 5, 5); // head, held up
-      g.fillStyle(0x0a0a0a);
-      g.fillRect(x - 3, y - 12, 2, 3); // ear
-      g.fillRect(x + 1, y - 12, 2, 3); // ear
+      g.fillStyle(MUZZLE);
+      g.fillRect(x - 2, y - 7, 3, 2);  // muzzle patch — breaks up the round
+                                       // rabbit-head silhouette with a snout
+      g.fillStyle(FUR_DARK);
       g.fillRect(x + 5, y + 3, 3, 3);  // tail, curled in at the side
-      g.fillStyle(0xffffff, 0.8);
-      g.fillRect(x - 2, y - 9, 1, 1);  // eye highlight
+      g.fillStyle(0x1a1208);
+      g.fillRect(x - 1, y - 6, 1, 1);  // nose
+      g.fillRect(x - 2, y - 9, 1, 1);  // eye
       return;
     }
 
@@ -1418,12 +1435,16 @@ class GameScene extends Phaser.Scene {
 
     g.fillStyle(0x000000, 0.2);
     g.fillEllipse(x, y + 6, 12, 3);
-    g.fillStyle(0x181818);
+    g.fillStyle(FUR);
     g.fillRect(x - 5, y - 2 + bob, 10, 6);              // stretched body
     g.fillRect(x + hx - 2, y + hy - 2 + bob, 5, 5);      // head, out front
-    g.fillStyle(0x0a0a0a);
+    g.fillStyle(MUZZLE);
+    // Muzzle patch offset toward the head's leading edge, direction-dependent
+    if (Math.abs(dx) >= Math.abs(dy)) g.fillRect(x + hx + (dx > 0 ? 0 : -3), y + hy - 1 + bob, 3, 2);
+    else                              g.fillRect(x + hx - 1, y + hy + (dy > 0 ? 0 : -3) + bob, 2, 3);
+    g.fillStyle(FUR_DARK);
     g.fillRect(x - hx - 1, y - hy - 1 + bob, 3, 2);      // tail, trailing behind
-    g.fillStyle(0xffffff, 0.8);
+    g.fillStyle(0x1a1208);
     g.fillRect(x + hx - 1, y + hy - 1 + bob, 1, 1);      // eye
   }
 

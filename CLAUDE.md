@@ -93,6 +93,8 @@ Unlike bird/deer/fox, the dog is **in the yard itself** (not the border) and pre
 - **idle**: a sitting silhouette — low, wide haunches (`fillEllipse`) with the chest/head held upright above them and the tail curled in at the side, distinctly "at rest" rather than the running pose standing still.
 - **fleeing**: the original low, stretched pose with dx/dy-driven head placement (same technique as the squirrel) and a 1px vertical bob, for a scampering read while actually moving.
 
+Palette is warm brown (`FUR`/`FUR_DARK`) with a tan muzzle patch, not flat near-black — the original near-black fur plus straight-up-pointing ears read as a rabbit rather than a dog. Fixed with two changes together: floppy triangular ears (`fillTriangle`) drooping outward from the sides of the head instead of straight rects on top, and a lighter muzzle/snout patch on the head to break up the round-head silhouette.
+
 `playDogBark()` (module-level, alongside the other audio functions below) is a two-note "arf-arf" — `square` oscillators (woofier than a raw sawtooth) each swept 400Hz→150Hz, run through a `BiquadFilterNode` lowpass that sweeps down alongside the pitch (2000Hz→500Hz) to round off the harsh top end, with a fast attack and quick exponential decay. (An earlier single-note raw-sawtooth version read as more of a buzz than a bark.)
 
 ## Audio
