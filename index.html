@@ -79,12 +79,42 @@
       line-height: 1;
       white-space: nowrap;
     }
+    /* Level indicator + prev/next nav, grouped in a flex row so the arrow
+       buttons sit right beside the text regardless of its width (L1 vs
+       L10). #ui-layer above is pointer-events:none so clicks pass through
+       to the canvas; this row opts back into pointer-events so its buttons
+       are actually clickable. */
+    #level-nav {
+      left: 8px; top: 6px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      pointer-events: auto;
+    }
     /* No background bar behind it anymore, so it needs its own contrast
        against whatever's under it (grass, obstacles, mowed cells). */
     #hud-level {
-      left: 8px; top: 6px;
       font-size: 10px; color: #ffcc44; font-weight: 700;
       text-shadow: 0 0 3px rgba(0,0,0,0.9), 0 0 3px rgba(0,0,0,0.9), 1px 1px 0 rgba(0,0,0,0.9);
+    }
+    .level-nav-btn {
+      background: rgba(255, 255, 255, 0.15);
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      border-radius: 3px;
+      color: #fff;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 11px;
+      line-height: 1;
+      padding: 1px 5px 2px;
+      cursor: pointer;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .level-nav-btn:active:not(:disabled) { background: rgba(255, 255, 255, 0.4); }
+    .level-nav-btn:disabled {
+      opacity: 0.25;
+      cursor: default;
     }
 
     /* ── Win overlay ─────────────────────────────────────────────────────── */
@@ -320,7 +350,11 @@
   <!-- UI text overlay (positioned over canvas by JS) -->
   <div id="ui-layer">
     <div id="ui-canvas">
-      <span id="hud-level"  class="ui-text">L1</span>
+      <div id="level-nav" class="ui-text">
+        <button id="level-prev" class="level-nav-btn" aria-label="Previous level">&#8249;</button>
+        <span id="hud-level">L1</span>
+        <button id="level-next" class="level-nav-btn" aria-label="Next level">&#8250;</button>
+      </div>
     </div>
   </div>
 

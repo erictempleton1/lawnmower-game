@@ -915,6 +915,26 @@ class GameScene extends Phaser.Scene {
     document.getElementById('hud-level').textContent = `L${this.currentLevel + 1}`;
     this.pctEl = document.getElementById('hud-pct-bottom');
     this.pctEl.textContent = '0%';
+
+    // Prev/next level buttons flanking the level indicator. Assigned (not
+    // addEventListener) since these DOM elements persist across
+    // scene.restart() — re-wiring on every create() avoids stacking stale
+    // handlers bound to a previous, now-dead scene instance.
+    this.levelPrevEl = document.getElementById('level-prev');
+    this.levelNextEl = document.getElementById('level-next');
+    this.levelPrevEl.disabled = this.currentLevel <= 0;
+    this.levelNextEl.disabled = this.currentLevel >= this.allLevels.length - 1;
+    this.levelPrevEl.onclick = () => this.goToLevel(this.currentLevel - 1);
+    this.levelNextEl.onclick = () => this.goToLevel(this.currentLevel + 1);
+  }
+
+  // No wraparound — only navigates when a level actually exists at index;
+  // out-of-range calls (also guarded against by the buttons' own disabled
+  // state above) are a silent no-op rather than clamping or looping.
+  goToLevel(index) {
+    if (index < 0 || index >= this.allLevels.length) return;
+    this.hideWin();
+    this.scene.restart({ levels: this.allLevels, level: index });
   }
 
   syncUIOverlay() {
