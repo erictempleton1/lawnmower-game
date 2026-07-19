@@ -3,6 +3,14 @@
 ## Project
 Pixel art top-down lawnmower game. Phaser 4.2.1, vanilla JS, no build step. Deployed to GitHub Pages via GitHub Actions on every push to main.
 
+## Design Philosophy
+This game is meant to be **relaxing and mindless** — a low-stakes activity, not a challenge. It should never cause frustration or invite competitiveness. Every design decision, including new feature requests, should be weighed against this before anything else:
+- **No pressure.** No timers, scores, leaderboards, difficulty settings, or fail states. Nothing to lose, rush, or optimize. `WIN_PCT` exists so a level has an endpoint, not so the player is being judged.
+- **No punishing mechanics.** Obstacles block movement but never undo progress — nothing reverts mowed grass, costs the player anything, or requires precision under pressure. (Sprinklers were removed specifically because they didn't fit this — see "No Sprinklers" below.)
+- **Ambient, not adversarial.** Wildlife (squirrel, bird, deer, fox, dog, frog) exist for charm and gentle surprise, not to threaten or challenge the player — none of them can end a level badly or need to be "beaten." The dog scampers, it doesn't chase; the frog hides, it doesn't harass.
+- **Gentle audio, gentle pace.** See the Audio section's "mindless peacefulness" tone — sounds are soft accents, not alerts or stingers. Movement speed is fixed at a comfortable medium (see "No Toggle-able Settings"), not something to min-max.
+- **When in doubt, simplify toward calm.** If a proposed feature could read as stressful, punishing, or competitive (even subtly), that's a reason to reconsider or soften it before building it, not a detail to fix later.
+
 ## Key Files
 - `game.js` — all game logic (single file)
 - `index.html` — canvas host + DOM UI overlay + loading screen
