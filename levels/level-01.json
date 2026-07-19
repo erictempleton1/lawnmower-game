@@ -1,5 +1,6 @@
 {
   "name": "Level 1",
+  "mowPattern": "checker",
   "map": [
     "..................",
     "..BBB..TT..GG..BBB",

@@ -467,6 +467,11 @@ class GameScene extends Phaser.Scene {
   // - 'rings' (level-03.json): alternates by Chebyshev ("square") distance
   //   from the yard's center cell, i.e. concentric square rings growing
   //   outward from the middle, alternating shade ring by ring.
+  // - 'checker' (level-01.json): alternates by (column + row) parity — a
+  //   classic single-cell checkerboard.
+  // - 'diagonal' (level-04.json): alternates by (column + row) in 2-cell-
+  //   wide bands — diagonal stripes running at 45°, same band thickness as
+  //   'stripe' just along the other axis.
   // Any other/missing value renders a flat, uniform mow (unchanged from
   // before mow patterns existed).
   mowedTextureKey(h, gc, gr) {
@@ -478,6 +483,10 @@ class GameScene extends Phaser.Scene {
       const centerR = (YARD_ROWS - 1) / 2;
       const ring = Math.floor(Math.max(Math.abs(gc - centerC), Math.abs(gr - centerR)));
       alt = ring % 2 === 1;
+    } else if (this.levelData.mowPattern === 'checker') {
+      alt = (gc + gr) % 2 === 1;
+    } else if (this.levelData.mowPattern === 'diagonal') {
+      alt = Math.floor((gc + gr) / 2) % 2 === 1;
     }
     return `mowed_${h}_full${alt ? '_alt' : ''}`;
   }

@@ -80,8 +80,10 @@ This is a deliberate return to a simpler design after two failed attempts at mat
 
 ### Mow Patterns (per-level)
 `buildMowedTextures()` also generates a `mowed_H_full_alt` variant per deck height — the same texture with `shadeColor()` darkening its base/stripe colors by 15%. `mowedTextureKey(h, gc, gr)` picks between the two based on the level's opt-in `mowPattern` string field (in that level's JSON — omitted/unrecognized means a flat, uniform mow, unchanged from before mow patterns existed). `mowAt()` and `checkClusterCompletion()` both call it instead of hardcoding `mowed_${h}_full`, so gardens/bushes auto-mow with the same alternation as the player's own mowing. Patterns so far:
+- `'checker'` (`level-01.json`): alternates by `(gc + gr)` parity — a single-cell checkerboard.
 - `'stripe'` (`level-02.json`): alternates by grid-column parity — vertical bands, mimicking the light/dark banding real mowers leave cutting adjacent passes in opposite directions.
 - `'rings'` (`level-03.json`): alternates by Chebyshev ("square") distance from the yard's center cell (`Math.floor(Math.max(|gc - centerC|, |gr - centerR|))`), i.e. concentric square rings growing outward from the middle, alternating shade ring by ring — a target/bullseye look starting small and growing outward as more of the yard gets mowed.
+- `'diagonal'` (`level-04.json`): alternates by `Math.floor((gc + gr) / 2)` parity — 2-cell-wide diagonal bands at 45°, same band thickness as `'stripe'` just along the other axis.
 
 ## No Toggle-able Settings
 Deck height, speed, blade, and distractions (squirrel) all used to be player-adjustable via a lever/toggle panel docked to the right border. That panel was removed — there is no in-game way to change these anymore. They're fixed at their old defaults: `this.deckHeight = 2` (set once in `create()`), `SPEED_STEP = 2` (medium), blade always on, distractions always on. If a "make it configurable again" request comes in, the lever UI code is recoverable from git history (commit `1b1fe23` and earlier had the full lever/toggle implementation).

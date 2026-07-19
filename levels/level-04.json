@@ -1,5 +1,6 @@
 {
   "name": "Level 4",
+  "mowPattern": "diagonal",
   "map": [
     "TT...TT.........TT",
     "TT...TT..PPPPP..TT",
