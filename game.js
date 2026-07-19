@@ -941,10 +941,14 @@ class GameScene extends Phaser.Scene {
                 else if (isBottom && isRight) key = 'pond_corner_br';
               }
               this.obstacleRT.stamp(key, null, bx, by);
-              // A few random lily pads scattered across the pond for
-              // visual variety, rather than every cell looking identical.
-              if (type === 'P' && Math.random() < 0.18) {
-                this.obstacleRT.stamp('lilypad', null, bx, by);
+              // A few random lily pads or cattails scattered across the
+              // pond for visual variety, rather than every cell looking
+              // identical — mutually exclusive per cell (one roll picking
+              // at most one) so they don't clutter the same tile.
+              if (type === 'P') {
+                const roll = Math.random();
+                if (roll < 0.18) this.obstacleRT.stamp('lilypad', null, bx, by);
+                else if (roll < 0.30) this.obstacleRT.stamp('cattail', null, bx, by);
               }
             }
           }
@@ -962,25 +966,6 @@ class GameScene extends Phaser.Scene {
               const ty = (YARD_Y + r + dr) * CELL + CELL;
               this.obstacleRT.stamp(key, null, tx, ty);
             }
-          }
-        }
-      }
-    }
-
-    // Cattails: a few scattered on the plain-grass ring bordering a pond
-    // (not the pond itself), purely decorative like the lily pads — a
-    // shoreline accent rather than every bordering cell getting one.
-    if (this.pondBounds) {
-      const { minR, maxR, minC, maxC } = this.pondBounds;
-      for (let r = minR - 1; r <= maxR + 1; r++) {
-        for (let c = minC - 1; c <= maxC + 1; c++) {
-          if (r < 0 || r >= YARD_ROWS || c < 0 || c >= YARD_COLS) continue;
-          if (r >= minR && r <= maxR && c >= minC && c <= maxC) continue;
-          if (map[r][c] !== '.') continue;
-          if (Math.random() < 0.22) {
-            const bx = (YARD_X + c) * CELL + CELL / 2;
-            const by = (YARD_Y + r) * CELL + CELL / 2;
-            this.obstacleRT.stamp('cattail', null, bx, by);
           }
         }
       }
