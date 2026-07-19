@@ -615,20 +615,32 @@ class GameScene extends Phaser.Scene {
       bgTrees.push({ key: 'bg_pine', x: margin - 18, y: y + Phaser.Math.Between(-4, 4) });
     for (let y = yardT + margin + 33; y < yardB - margin; y += 66)
       bgTrees.push({ key: 'bg_pine', x: W - margin + 18, y: y + Phaser.Math.Between(-4, 4) });
+    // Same pine stagger along the top/bottom edges, alongside their own
+    // bg_trees — previously left/right-only, but the taller border now
+    // has the same depth to fill on top/bottom too.
+    for (let x = margin + 33; x < W - margin; x += 66)
+      bgTrees.push({ key: 'bg_pine', x: x + Phaser.Math.Between(-4, 4), y: margin - 18 });
+    for (let x = margin + 33; x < W - margin; x += 66)
+      bgTrees.push({ key: 'bg_pine', x: x + Phaser.Math.Between(-4, 4), y: H - margin + 18 });
 
-    // A second, inner depth-row of trees closer to the yard's own top/
-    // bottom edge. The outer row above is anchored a fixed 20px from the
-    // canvas edge — deep enough to reach the yard boundary when the border
-    // was shorter, but a taller border (bigger YARD_Y) would otherwise
-    // leave a bare gap of just grass/wildflowers between that row and the
-    // yard. Only added where there's room for it, mirroring the side
-    // trees' own inner-row guard.
+    // A second, inner depth-row of trees/pines closer to the yard's own
+    // top/bottom edge. The outer row above is anchored a fixed 20px from
+    // the canvas edge — deep enough to reach the yard boundary when the
+    // border was shorter, but a taller border (bigger YARD_Y) would
+    // otherwise leave a bare gap of just grass/wildflowers between that
+    // row and the yard. Only added where there's room for it, mirroring
+    // the side trees' own inner-row guard.
     const innerTreeY = yardT - 22, innerTreeYB = yardB + 22;
+    const innerPineY = innerTreeY - 18, innerPineYB = innerTreeYB + 18;
     if (innerTreeY > margin + 30) {
       for (let x = margin + 33; x < W - margin; x += 66)
         bgTrees.push({ key: 'bg_tree', x: x + Phaser.Math.Between(-4, 4), y: innerTreeY + Phaser.Math.Between(-4, 4) });
       for (let x = margin + 33; x < W - margin; x += 66)
         bgTrees.push({ key: 'bg_tree', x: x + Phaser.Math.Between(-4, 4), y: innerTreeYB + Phaser.Math.Between(-4, 4) });
+      for (let x = margin; x < W - margin; x += 66)
+        bgTrees.push({ key: 'bg_pine', x: x + Phaser.Math.Between(-4, 4), y: innerPineY + Phaser.Math.Between(-4, 4) });
+      for (let x = margin; x < W - margin; x += 66)
+        bgTrees.push({ key: 'bg_pine', x: x + Phaser.Math.Between(-4, 4), y: innerPineYB + Phaser.Math.Between(-4, 4) });
     }
 
     bgTrees.sort((a, b) => a.y - b.y);
