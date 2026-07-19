@@ -87,15 +87,17 @@ function setupAudio() {
   // Mower hum: a single continuous low tone whose gain is modulated by
   // movement state (see setHumActive()) rather than started/stopped each
   // time the player moves — oscillators can only be started once, and
-  // ramping gain avoids audible clicks at the transition. Deliberately
-  // quiet and low-pass filtered so it reads as a soft background hum, not
-  // a game-y sound effect — the goal is peaceful, not busy.
+  // ramping gain avoids audible clicks at the transition. Low-pass
+  // filtered and tonally soft so it reads as a background hum rather
+  // than a game-y sound effect, matching the peaceful/not-busy goal —
+  // but still loud enough to actually be heard (95Hz/gain 0.05 was
+  // nearly inaudible on typical laptop/phone speakers).
   const osc = g_audioCtx.createOscillator();
   osc.type = 'triangle';
-  osc.frequency.value = 95;
+  osc.frequency.value = 115;
   const filter = g_audioCtx.createBiquadFilter();
   filter.type = 'lowpass';
-  filter.frequency.value = 300;
+  filter.frequency.value = 500;
   g_humGain = g_audioCtx.createGain();
   g_humGain.gain.value = 0;
   osc.connect(filter);
@@ -106,7 +108,7 @@ function setupAudio() {
 
 function setHumActive(active) {
   if (!g_audioCtx || !g_humGain) return;
-  g_humGain.gain.linearRampToValueAtTime(active ? 0.05 : 0, g_audioCtx.currentTime + 0.15);
+  g_humGain.gain.linearRampToValueAtTime(active ? 0.16 : 0, g_audioCtx.currentTime + 0.15);
 }
 
 // A soft 4-note major arpeggio, low volume with a quick attack and gentle
@@ -122,7 +124,7 @@ function playWinChime() {
     osc.type = 'sine';
     osc.frequency.value = freq;
     gain.gain.setValueAtTime(0, t);
-    gain.gain.linearRampToValueAtTime(0.08, t + 0.02);
+    gain.gain.linearRampToValueAtTime(0.22, t + 0.02);
     gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
     osc.connect(gain);
     gain.connect(g_audioCtx.destination);
