@@ -1386,12 +1386,7 @@ class GameScene extends Phaser.Scene {
     // tall-but-narrow pond can do easily. When that happens, only the
     // other pair of edges is offered at all, rather than occasionally
     // falling back to a path that cuts straight across the water.
-    const pond = this.pondBounds ? {
-      top: (YARD_Y + this.pondBounds.minR) * CELL,
-      bottom: (YARD_Y + this.pondBounds.maxR + 1) * CELL,
-      left: (YARD_X + this.pondBounds.minC) * CELL,
-      right: (YARD_X + this.pondBounds.maxC + 1) * CELL,
-    } : null;
+    const pond = this.pondRectPx();
 
     const safeY = this.pondSafeValue(yT + CELL, yB - CELL, pond && pond.top - CELL, pond && pond.bottom + CELL);
     const safeX = this.pondSafeValue(yL + CELL, yR - CELL, pond && pond.left - CELL, pond && pond.right + CELL);
@@ -1435,6 +1430,19 @@ class GameScene extends Phaser.Scene {
     return Math.random() < lenA / (lenA + lenB)
       ? Phaser.Math.Between(lo, segABound)
       : Phaser.Math.Between(segBBound, hi);
+  }
+
+  // Pixel-space bounding rect of this level's pond, or null if there isn't
+  // one — shared by launchSquirrel() and pickDogSpot() so both use the
+  // exact same rectangle when deciding what a creature's path may not cross.
+  pondRectPx() {
+    if (!this.pondBounds) return null;
+    return {
+      top: (YARD_Y + this.pondBounds.minR) * CELL,
+      bottom: (YARD_Y + this.pondBounds.maxR + 1) * CELL,
+      left: (YARD_X + this.pondBounds.minC) * CELL,
+      right: (YARD_X + this.pondBounds.maxC + 1) * CELL,
+    };
   }
 
   updateSquirrel(dt) {
@@ -1712,24 +1720,55 @@ class GameScene extends Phaser.Scene {
   // short linear slide, not a teleport — to a spot picked away from the
   // player, then waits out a cooldown before it can be startled again.
 
-  // Scans the level's plain-grass ('.') cells for ones at least minDistPx
-  // from (avoidX, avoidY), in world pixel coordinates; returns a random
-  // match's cell-center, or null if none qualify (used both for the dog's
-  // initial spawn spot and each scamper destination).
-  pickDogSpot(avoidX, avoidY, minDistPx) {
+  // Finds the level's plain-grass ('.') cells, in world pixel coordinates,
+  // and returns a random one's cell-center (or null if the level somehow
+  // has none) — used for both the dog's initial spawn spot and each
+  // scamper destination.
+  //
+  // Two independent preferences are applied, in priority order, each only
+  // keeping the narrowed-down set if it's non-empty (falling through to
+  // the wider set otherwise) so neither can ever leave zero candidates:
+  //
+  // 1. Same side of a level's pond as originX/originY (the dog's current
+  //    position — omitted for the initial spawn, which has no path yet).
+  //    Two points both left of the pond's left edge (or both right of its
+  //    right edge, etc.) can never have a straight line between them cross
+  //    it — a stronger guarantee than testing the exact path, since a pond
+  //    spanning nearly the whole yard along one axis (see Level 4) can
+  //    leave zero routes across that a straight-line check would ever
+  //    accept, forcing an exact-path test to eventually allow one anyway.
+  //    This preference is applied FIRST and unconditionally kept whenever
+  //    non-empty, ahead of the distance preference below, so a dog that's
+  //    boxed into a narrow strip on one side of the pond degrades to a
+  //    closer-than-ideal escape on that same side rather than ever
+  //    crossing the water to satisfy the distance check instead.
+  // 2. At least minDistPx from (avoidX, avoidY) — keeps a scamper target
+  //    from being so close to the player that it immediately re-triggers.
+  pickDogSpot(avoidX, avoidY, minDistPx, originX, originY) {
     const map = this.levelData.map;
-    const candidates = [];
+    const allGrass = [];
     for (let r = 0; r < YARD_ROWS; r++) {
       for (let c = 0; c < YARD_COLS; c++) {
         if (map[r][c] !== '.') continue;
-        const x = (YARD_X + c) * CELL + CELL / 2;
-        const y = (YARD_Y + r) * CELL + CELL / 2;
-        if (Math.hypot(x - avoidX, y - avoidY) < minDistPx) continue;
-        candidates.push({ x, y });
+        allGrass.push({ x: (YARD_X + c) * CELL + CELL / 2, y: (YARD_Y + r) * CELL + CELL / 2 });
       }
     }
-    if (candidates.length === 0) return null;
-    return candidates[Phaser.Math.Between(0, candidates.length - 1)];
+    if (allGrass.length === 0) return null;
+
+    let pool = allGrass;
+    if (originX != null && this.pondBounds) {
+      const rect = this.pondRectPx();
+      let sameSide = null;
+      if (originX < rect.left) sameSide = allGrass.filter(c => c.x < rect.left);
+      else if (originX > rect.right) sameSide = allGrass.filter(c => c.x > rect.right);
+      else if (originY < rect.top) sameSide = allGrass.filter(c => c.y < rect.top);
+      else if (originY > rect.bottom) sameSide = allGrass.filter(c => c.y > rect.bottom);
+      if (sameSide && sameSide.length > 0) pool = sameSide;
+    }
+
+    const far = pool.filter(c => Math.hypot(c.x - avoidX, c.y - avoidY) >= minDistPx);
+    if (far.length > 0) pool = far;
+    return pool[Phaser.Math.Between(0, pool.length - 1)];
   }
 
   updateDog(dt) {
@@ -1745,8 +1784,10 @@ class GameScene extends Phaser.Scene {
         const dist = Math.hypot(this.player.x - this.dog.x, this.player.y - this.dog.y);
         if (dist < TRIGGER_DIST) {
           // Picked away from the player (not just the dog's own old spot)
-          // so the new resting place can't immediately re-trigger a flee.
-          const spot = this.pickDogSpot(this.player.x, this.player.y, 100);
+          // so the new resting place can't immediately re-trigger a flee —
+          // and away from a path crossing the pond, keyed off the dog's
+          // current position as the origin of that path.
+          const spot = this.pickDogSpot(this.player.x, this.player.y, 100, this.dog.x, this.dog.y);
           if (spot) {
             const fleeDist = Math.hypot(spot.x - this.dog.x, spot.y - this.dog.y);
             this.dog.state       = 'fleeing';
