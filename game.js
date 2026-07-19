@@ -53,6 +53,16 @@ const C = {
   mowerWheel: 0x222222,
 };
 
+// Multiplies a 0xRRGGBB color's channels by factor (<1 darkens) — used to
+// derive the alternate-stripe mowed texture from each deck height's own
+// base/stripe colors rather than hand-picking a second palette.
+function shadeColor(hex, factor) {
+  const r = Math.min(255, Math.round(((hex >> 16) & 0xff) * factor));
+  const g = Math.min(255, Math.round(((hex >> 8) & 0xff) * factor));
+  const b = Math.min(255, Math.round((hex & 0xff) * factor));
+  return (r << 16) | (g << 8) | b;
+}
+
 // Deck height colours (index = deckHeight - 1)
 const DECK = [
   { base: 0x5a8a3a, stripe: 0x6a9a45 }, // 1 — shortest / brightest
@@ -322,7 +332,30 @@ class GameScene extends Phaser.Scene {
       gf.strokeRect(0, 0, CELL, CELL);
       gf.generateTexture(`mowed_${h}_full`, CELL, CELL);
       gf.destroy();
+
+      // A slightly darker variant of the same texture — used by levels with
+      // levelData.stripedMow set (see mowedTextureKey()) to alternate by
+      // grid column, mimicking the light/dark banding real mowers leave
+      // when cutting adjacent passes in opposite directions.
+      const gfAlt = this.make.graphics({ add: false });
+      gfAlt.fillStyle(shadeColor(base, 0.85));
+      gfAlt.fillRect(0, 0, CELL, CELL);
+      gfAlt.fillStyle(shadeColor(stripe, 0.85), 0.5);
+      gfAlt.fillRect(2, 0, 3, CELL);
+      gfAlt.fillRect(10, 0, 2, CELL);
+      gfAlt.lineStyle(1, 0x000000, 0.05);
+      gfAlt.strokeRect(0, 0, CELL, CELL);
+      gfAlt.generateTexture(`mowed_${h}_full_alt`, CELL, CELL);
+      gfAlt.destroy();
     }
+  }
+
+  // Picks the plain or darker-alternate mowed texture for deck height h at
+  // grid column gc — alternates every column, but only for levels that opt
+  // in via levelData.stripedMow (see level-02.json).
+  mowedTextureKey(h, gc) {
+    const alt = this.levelData.stripedMow && gc % 2 === 1;
+    return `mowed_${h}_full${alt ? '_alt' : ''}`;
   }
 
   buildLevelTextures() {
@@ -987,7 +1020,7 @@ class GameScene extends Phaser.Scene {
 
     const cx = (YARD_X + gc) * CELL + CELL / 2;
     const cy = (YARD_Y + gr) * CELL + CELL / 2;
-    this.mowedRT.stamp(`mowed_${this.deckHeight}_full`, null, cx, cy);
+    this.mowedRT.stamp(this.mowedTextureKey(this.deckHeight, gc), null, cx, cy);
     this.mowedRT.render();
 
     if (firstMow) {
@@ -1008,8 +1041,9 @@ class GameScene extends Phaser.Scene {
         const cx = (YARD_X + c) * CELL + CELL / 2;
         const cy = (YARD_Y + r) * CELL + CELL / 2;
         // Full-size — this is hidden under the garden's own texture anyway
-        // (obstacle layer renders above the mowed layer), so shape is moot.
-        this.mowedRT.stamp('mowed_2_full', null, cx, cy);
+        // (obstacle layer renders above the mowed layer), so shape is moot,
+        // but the column-based stripe key is still applied for consistency.
+        this.mowedRT.stamp(this.mowedTextureKey(2, c), null, cx, cy);
       }
       this.mowedRT.render();
     }

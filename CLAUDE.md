@@ -64,6 +64,9 @@ This is a deliberate return to a simpler design after two failed attempts at mat
 
 `buildMowedTextures()` generates just this one `mowed_H_full` texture per deck height — used by both the player's own mowing and by `checkClusterCompletion()`'s garden auto-mow (which stamps whole cells instantly and is hidden under the garden's own obstacle-layer texture anyway, depth 3 above the mowed layer's depth 1).
 
+### Alternating Stripe Levels
+`buildMowedTextures()` also generates a `mowed_H_full_alt` variant per deck height — the same texture with `shadeColor()` darkening its base/stripe colors by 15%. `mowedTextureKey(h, gc)` picks between the two by grid-column parity, but only for levels with `stripedMow: true` in their level JSON (currently just `level-02.json`) — `mowAt()` and `checkClusterCompletion()` both call it instead of hardcoding `mowed_${h}_full`, so gardens/bushes auto-mow with the same column-based alternation. This mimics the light/dark banding real mowers leave from cutting adjacent passes in opposite directions — vertical bands since the alternation is per-column, not per-row.
+
 ## No Toggle-able Settings
 Deck height, speed, blade, and distractions (squirrel) all used to be player-adjustable via a lever/toggle panel docked to the right border. That panel was removed — there is no in-game way to change these anymore. They're fixed at their old defaults: `this.deckHeight = 2` (set once in `create()`), `SPEED_STEP = 2` (medium), blade always on, distractions always on. If a "make it configurable again" request comes in, the lever UI code is recoverable from git history (commit `1b1fe23` and earlier had the full lever/toggle implementation).
 

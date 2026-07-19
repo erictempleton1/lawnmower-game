@@ -1,5 +1,6 @@
 {
   "name": "Level 2",
+  "stripedMow": true,
   "map": [
     "..................",
     "..TT....GG.....TT.",
