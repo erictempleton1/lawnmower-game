@@ -201,6 +201,27 @@ function playDogBark() {
   }
 }
 
+// A quick "plop" — a sine oscillator with a fast downward pitch sweep —
+// triggered when the frog jumps into or back out of the pond (see
+// updateFrog()). Short and soft, consistent with the game's other subtle
+// creature sounds.
+function playSplash() {
+  if (!g_audioCtx) return;
+  const t    = g_audioCtx.currentTime;
+  const osc  = g_audioCtx.createOscillator();
+  const gain = g_audioCtx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(500, t);
+  osc.frequency.exponentialRampToValueAtTime(120, t + 0.12);
+  gain.gain.setValueAtTime(0, t);
+  gain.gain.linearRampToValueAtTime(0.18, t + 0.015);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+  osc.connect(gain);
+  gain.connect(g_audioCtx.destination);
+  osc.start(t);
+  osc.stop(t + 0.17);
+}
+
 // Pads an authored level map out to YARD_ROWS×YARD_COLS with plain grass,
 // centering the original layout. A no-op once a map is already the right
 // size, so it's safe to call again on scene.restart (which reuses the same
@@ -274,7 +295,11 @@ class GameScene extends Phaser.Scene {
     this.buildMowedLayer();
     this.buildObstacleLayer();
 
-    this.totalCells = YARD_ROWS * YARD_COLS;
+    // Pond cells are permanent water — they never get mowed (unlike
+    // gardens/bushes, which eventually auto-mow), so they're excluded from
+    // the denominator entirely rather than counting toward a total the
+    // player could never actually reach.
+    this.totalCells = YARD_ROWS * YARD_COLS - this.pondCellCount;
 
     this.setupPlayer();
     this.setupInput();
@@ -285,6 +310,22 @@ class GameScene extends Phaser.Scene {
     const dogSpot = this.pickDogSpot(this.player.x, this.player.y, 80)
       ?? { x: (YARD_X + YARD_COLS - 1) * CELL + CELL / 2, y: (YARD_Y + YARD_ROWS - 1) * CELL + CELL / 2 };
     this.dog = { x: dogSpot.x, y: dogSpot.y, state: 'idle', cooldownRemaining: 0 };
+
+    // Frog: only on levels with a pond. Sits on solid ground at whichever
+    // side of the pond has a free grass cell (pickFrogSpot()), jumping in
+    // when the player gets close and resurfacing after a pause — see
+    // updateFrog().
+    this.frog = null;
+    if (this.pondBounds) {
+      const fs = this.pickFrogSpot();
+      if (fs) {
+        const spotX = (YARD_X + fs.spotCol) * CELL + CELL / 2;
+        const spotY = (YARD_Y + fs.spotRow) * CELL + CELL / 2;
+        const jumpX = (YARD_X + fs.jumpCol) * CELL + CELL / 2;
+        const jumpY = (YARD_Y + fs.jumpRow) * CELL + CELL / 2;
+        this.frog = { x: spotX, y: spotY, spotX, spotY, jumpX, jumpY, state: 'sitting', t: 0, cooldownRemaining: 0 };
+      }
+    }
 
     this.buildHUD();
     this.buildWinOverlay();
@@ -303,6 +344,9 @@ class GameScene extends Phaser.Scene {
     this.dogGfx = this.add.graphics();
     this.dogGfx.setDepth(4);
     this.drawDog();
+    this.frogGfx = this.add.graphics();
+    this.frogGfx.setDepth(4);
+    this.drawFrog();
 
     this.mowAt(this.player.x, this.player.y);
     if (g_introShown) {
@@ -481,6 +525,36 @@ class GameScene extends Phaser.Scene {
     gg.strokeRect(1, 1, S - 2, S - 2);
     gg.generateTexture('garden', S, S);
     gg.destroy();
+
+    // Pond — 16×16, one per cell (like bush), since a pond's a rectangular
+    // blob of arbitrary size rather than a 2×2-aligned cluster.
+    const pd = this.make.graphics({ add: false });
+    pd.fillStyle(0x1f5570);
+    pd.fillRect(0, 0, CELL, CELL);
+    pd.fillStyle(0x2f7590, 0.5);
+    pd.fillRect(0, 3, CELL, 2);
+    pd.fillRect(0, 10, CELL, 2);
+    pd.fillStyle(0x123f4d, 0.5);
+    pd.fillRect(0, 7, CELL, 1);
+    pd.fillRect(0, 13, CELL, 1);
+    pd.lineStyle(1, 0x000000, 0.15);
+    pd.strokeRect(0, 0, CELL, CELL);
+    pd.generateTexture('pond', CELL, CELL);
+    pd.destroy();
+
+    // Lily pad — small decorative overlay stamped on a few random pond
+    // cells (see buildObstacleLayer()), not every cell, for visual variety.
+    const lp = this.make.graphics({ add: false });
+    lp.fillStyle(0x000000, 0.15);
+    lp.fillEllipse(8, 9, 10, 4);
+    lp.fillStyle(0x2f7a2a);
+    lp.fillEllipse(8, 8, 9, 6);
+    lp.fillStyle(0x3f9a35);
+    lp.fillEllipse(7, 7, 6, 4);
+    lp.fillStyle(0x1f5a20);
+    lp.fillTriangle(8, 8, 12, 6, 12, 10); // notch, classic lily-pad wedge
+    lp.generateTexture('lilypad', CELL, CELL);
+    lp.destroy();
   }
 
   buildBackground() {
@@ -664,15 +738,17 @@ class GameScene extends Phaser.Scene {
     const map = this.levelData.map;
     this.obstacleGrid = Array.from({ length: YARD_ROWS }, () => new Uint8Array(YARD_COLS));
     this.obstacleClusters = [];
+    this.pondCellCount = 0;
+    this.pondBounds = null;
 
-    // Gardens and bushes/hedges: all cells grid-blocked (isNearGarden()'s
-    // edge-collision check applies to any obstacleGrid cell, not just
-    // gardens specifically). Trees: no grid blocking — trunk uses
-    // pixel-radius collision so the mower can enter and mow the cell but
-    // can't pass through the trunk post.
+    // Gardens, bushes/hedges, and ponds: all cells grid-blocked
+    // (isNearGarden()'s edge-collision check applies to any obstacleGrid
+    // cell, not just gardens specifically). Trees: no grid blocking —
+    // trunk uses pixel-radius collision so the mower can enter and mow the
+    // cell but can't pass through the trunk post.
     for (let r = 0; r < YARD_ROWS; r++)
       for (let c = 0; c < YARD_COLS; c++)
-        if (map[r][c] === 'G' || map[r][c] === 'B') this.obstacleGrid[r][c] = 1;
+        if (map[r][c] === 'G' || map[r][c] === 'B' || map[r][c] === 'P') this.obstacleGrid[r][c] = 1;
 
     this.trunkPositions = [];
 
@@ -683,7 +759,7 @@ class GameScene extends Phaser.Scene {
     for (let r = 0; r < YARD_ROWS; r++) {
       for (let c = 0; c < YARD_COLS; c++) {
         const type = map[r][c];
-        if (type !== 'T' && type !== 'G' && type !== 'B') continue;
+        if (type !== 'T' && type !== 'G' && type !== 'B' && type !== 'P') continue;
 
         // Only process from the top-left corner of each contiguous cluster
         const aboveSame = r > 0 && map[r - 1][c] === type;
@@ -714,7 +790,7 @@ class GameScene extends Phaser.Scene {
           }
           const perimeter = [...perimSet].map(i => [Math.floor(i / YARD_COLS), i % YARD_COLS]);
           this.obstacleClusters.push({ cells, perimeter, done: false });
-        } else {
+        } else if (type === 'T') {
           // Trees: record trunk center for each 2×2 sub-block (used by isObstacle)
           for (let dr = 0; dr < cH; dr += 2) {
             for (let dc = 0; dc < cw; dc += 2) {
@@ -724,17 +800,37 @@ class GameScene extends Phaser.Scene {
               this.trunkPositions.push({ wx: tx, wy: ty + 8 });
             }
           }
+        } else {
+          // Ponds: permanent water, never auto-mowed (no cluster/perimeter
+          // tracking — unlike gardens/bushes, this area never joins the
+          // mowed count). Its cells are excluded from totalCells instead
+          // (see create()), and its bounding box places the frog.
+          this.pondCellCount += cw * cH;
+          const minR = r, maxR = r + cH - 1, minC = c, maxC = c + cw - 1;
+          this.pondBounds = this.pondBounds
+            ? {
+                minR: Math.min(this.pondBounds.minR, minR), maxR: Math.max(this.pondBounds.maxR, maxR),
+                minC: Math.min(this.pondBounds.minC, minC), maxC: Math.max(this.pondBounds.maxC, maxC),
+              }
+            : { minR, maxR, minC, maxC };
         }
 
-        if (type === 'B') {
-          // Bushes: one 16×16 texture per single cell (not a 32×32 2-cell
-          // block like trees/gardens use), since a hedge is often a
-          // single-cell-wide row of arbitrary length.
+        if (type === 'B' || type === 'P') {
+          // Bushes and ponds: one 16×16 texture per single cell (not a
+          // 32×32 2-cell block like trees/gardens use) — a hedge is often
+          // a single-cell-wide row, and a pond an arbitrary rectangle, so
+          // neither is guaranteed 2×2-aligned.
+          const key = type === 'B' ? 'bush' : 'pond';
           for (let dr = 0; dr < cH; dr++) {
             for (let dc = 0; dc < cw; dc++) {
               const bx = (YARD_X + c + dc) * CELL + CELL / 2;
               const by = (YARD_Y + r + dr) * CELL + CELL / 2;
-              this.obstacleRT.stamp('bush', null, bx, by);
+              this.obstacleRT.stamp(key, null, bx, by);
+              // A few random lily pads scattered across the pond for
+              // visual variety, rather than every cell looking identical.
+              if (type === 'P' && Math.random() < 0.18) {
+                this.obstacleRT.stamp('lilypad', null, bx, by);
+              }
             }
           }
         } else {
@@ -1005,6 +1101,7 @@ class GameScene extends Phaser.Scene {
       this.deerGfx?.clear();
       this.foxGfx?.clear();
       this.dogGfx?.clear();
+      this.frogGfx?.clear();
     });
   }
 
@@ -1547,6 +1644,95 @@ class GameScene extends Phaser.Scene {
     g.fillRect(x + hx - 1, y + hy - 1 + bob, 1, 1);      // eye
   }
 
+  // ── Frog ──────────────────────────────────────────────────────────────────
+  // Only exists on levels with a pond (this.pondBounds set in
+  // buildObstacleLayer()). Sits on dry ground beside the pond; when the
+  // player gets close it hops in and disappears for a while, then hops
+  // back out to the same spot — unlike the dog, it doesn't relocate, and
+  // has no collision (purely cosmetic, like the bird/deer/fox).
+
+  // Finds a plain-grass cell immediately next to the pond's bounding box —
+  // tries left/right first ("a frog on the side"), then top/bottom — along
+  // with the adjacent pond-edge cell it'll jump into. Returns null if no
+  // side has a free grass cell (shouldn't happen with a sensibly-authored
+  // level, but degrades to "no frog" rather than crashing).
+  pickFrogSpot() {
+    const { minR, maxR, minC, maxC } = this.pondBounds;
+    const midR = Math.floor((minR + maxR) / 2);
+    const midC = Math.floor((minC + maxC) / 2);
+    const candidates = [
+      { spotRow: midR, spotCol: minC - 1, jumpRow: midR, jumpCol: minC }, // left
+      { spotRow: midR, spotCol: maxC + 1, jumpRow: midR, jumpCol: maxC }, // right
+      { spotRow: minR - 1, spotCol: midC, jumpRow: minR, jumpCol: midC }, // top
+      { spotRow: maxR + 1, spotCol: midC, jumpRow: maxR, jumpCol: midC }, // bottom
+    ];
+    for (const cand of candidates) {
+      const { spotRow, spotCol } = cand;
+      if (spotRow < 0 || spotRow >= YARD_ROWS || spotCol < 0 || spotCol >= YARD_COLS) continue;
+      if (this.levelData.map[spotRow][spotCol] !== '.') continue;
+      return cand;
+    }
+    return null;
+  }
+
+  updateFrog(dt) {
+    if (!this.frog) return;
+    const TRIGGER_DIST = 40, HOP_MS = 350, SUBMERGED_MS = 2500, COOLDOWN_MS = 900;
+    const f = this.frog;
+    if (f.state === 'sitting') {
+      if (f.cooldownRemaining > 0) {
+        f.cooldownRemaining -= dt * 1000;
+      } else {
+        const dist = Math.hypot(this.player.x - f.x, this.player.y - f.y);
+        if (dist < TRIGGER_DIST) {
+          f.state = 'jumping';
+          f.t = 0;
+          playSplash();
+        }
+      }
+    } else if (f.state === 'jumping') {
+      f.t += dt * 1000;
+      const t = Math.min(1, f.t / HOP_MS);
+      f.x = Phaser.Math.Linear(f.spotX, f.jumpX, t);
+      f.y = Phaser.Math.Linear(f.spotY, f.jumpY, t);
+      f.hop = Math.sin(Math.PI * t) * 6;
+      if (t >= 1) { f.state = 'submerged'; f.t = 0; }
+    } else if (f.state === 'submerged') {
+      f.t += dt * 1000;
+      if (f.t >= SUBMERGED_MS) { f.state = 'returning'; f.t = 0; playSplash(); }
+    } else if (f.state === 'returning') {
+      f.t += dt * 1000;
+      const t = Math.min(1, f.t / HOP_MS);
+      f.x = Phaser.Math.Linear(f.jumpX, f.spotX, t);
+      f.y = Phaser.Math.Linear(f.jumpY, f.spotY, t);
+      f.hop = Math.sin(Math.PI * t) * 6;
+      if (t >= 1) { f.state = 'sitting'; f.cooldownRemaining = COOLDOWN_MS; }
+    }
+    this.drawFrog();
+  }
+
+  drawFrog() {
+    const g = this.frogGfx;
+    g.clear();
+    if (!this.frog || this.frog.state === 'submerged') return;
+
+    const x = Math.round(this.frog.x);
+    const y = Math.round(this.frog.y - (this.frog.hop || 0));
+
+    g.fillStyle(0x000000, 0.2);
+    g.fillEllipse(x, y + 3, 8, 3);
+    g.fillStyle(0x3a8a2e);
+    g.fillEllipse(x, y + 1, 7, 5);        // body
+    g.fillStyle(0x4aa53a);
+    g.fillEllipse(x, y - 1, 5, 4);        // back highlight
+    g.fillStyle(0x3a8a2e);
+    g.fillCircle(x - 3, y - 3, 2);        // eye bump (left)
+    g.fillCircle(x + 3, y - 3, 2);        // eye bump (right)
+    g.fillStyle(0x102a0a);
+    g.fillRect(x - 4, y - 4, 1, 1);
+    g.fillRect(x + 3, y - 4, 1, 1);
+  }
+
   updateHUD() {
     const pct = this.mowedCount / this.totalCells;
     this.pctEl.textContent = Math.floor(pct * 100) + '%';
@@ -1614,6 +1800,7 @@ class GameScene extends Phaser.Scene {
     this.updateDeer(dt);
     this.updateFox(dt);
     this.updateDog(dt);
+    this.updateFrog(dt);
     this.drawJoystick();
   }
 }

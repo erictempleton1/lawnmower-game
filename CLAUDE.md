@@ -6,7 +6,7 @@ Pixel art top-down lawnmower game. Phaser 4.2.1, vanilla JS, no build step. Depl
 ## Key Files
 - `game.js` — all game logic (single file)
 - `index.html` — canvas host + DOM UI overlay + loading screen
-- `levels/level-0N.json` — level maps (T=tree, G=garden, B=bush/hedge, .=grass)
+- `levels/level-0N.json` — level maps (T=tree, G=garden, B=bush/hedge, P=pond, .=grass)
 - `vendor/phaser.min.js` — Phaser 4.2.1, vendored locally (not CDN) to avoid a third-party DNS/TLS roundtrip on load. To bump the Phaser version, manually re-download and overwrite this file.
 
 ## Loading Screen
@@ -29,8 +29,8 @@ BASE_YARD_ROWS = 8 (authored level height)
 | 0 | Background RT |
 | 1 | Mowed grass RT |
 | 2 | Player gfx |
-| 3 | Obstacle RT (trees + gardens) |
-| 4 | Squirrel, bird, deer, fox, dog gfx |
+| 3 | Obstacle RT (trees + gardens + ponds) |
+| 4 | Squirrel, bird, deer, fox, dog, frog gfx |
 | 10 | Joystick gfx, HUD |
 
 Player is at depth 2 so he walks visually under the tree canopy (depth 3).
@@ -54,12 +54,13 @@ The unmowable border margin (outside `YARD_X`/`YARD_Y`) is dark wild grass (`0x1
 The top/bottom sides get a **second, inner** tree/pine row (`innerTreeY`/`innerTreeYB`/`innerPineY`/`innerPineYB`, offset in from `yardT`/`yardB` rather than the canvas edge) alongside the original outer row (fixed 20px from the canvas edge, `margin`). The outer row alone was deep enough to reach the yard boundary back when the border was shorter (`YARD_Y` 3) — a single ~44px-tall tree centered 20px from the edge already spans almost the full old 48px margin. Taller borders (`YARD_Y` 5, 80px margin) without a second row would otherwise leave a bare gap of just grass/wildflowers between that row and the yard; the inner row (skipped entirely if the border's too short to fit one without the two colliding, via an `innerTreeY > margin + 30` guard) fills that gap.
 
 ## Obstacle System
-- `obstacleGrid[r][c]` — gardens and bushes/hedges (full block); trees don't set this
+- `obstacleGrid[r][c]` — gardens, bushes/hedges, and ponds (full block); trees don't set this
 - `trunkPositions[]` — tree trunk pixel-radius collision (6px); player can enter and mow the cell but can't pass through
-- `obstacleClusters[]` — gardens **and** bushes/hedges; auto-mow cells when all perimeter cells are mowed (`this.totalCells` is a plain `YARD_ROWS * YARD_COLS` — no bush-cell subtraction needed, since bushes now reach mowedCount the same way gardens do)
-- `isNearGarden()` — despite the name, this is the general obstacle-edge collision check (applies to any `obstacleGrid`-blocked cell — gardens and bushes alike): it samples a small cross of points around the player (±6px, matching the mower's visual half-width) rather than just the exact center, so the mower's sprite stops right at the edge instead of visually overlapping into it before the single tracked point crosses the cell boundary
+- `obstacleClusters[]` — gardens **and** bushes/hedges only (not ponds); auto-mow cells when all perimeter cells are mowed (`this.totalCells` is `YARD_ROWS * YARD_COLS` minus `this.pondCellCount` — no bush-cell subtraction needed there, since bushes reach mowedCount the same way gardens do, but pond cells never do, so they're excluded from the denominator instead)
+- `isNearGarden()` — despite the name, this is the general obstacle-edge collision check (applies to any `obstacleGrid`-blocked cell — gardens, bushes, and ponds alike): it samples a small cross of points around the player (±6px, matching the mower's visual half-width) rather than just the exact center, so the mower's sprite stops right at the edge instead of visually overlapping into it before the single tracked point crosses the cell boundary
 - `TREE_TYPES` (`tree_round`, `tree_evergreen`) — one is picked at random per contiguous tree cluster in `buildObstacleLayer()` (not per 2×2 sub-block), so a single clump of trees reads as one coherent species. Both keep the trunk in the same local y=18..31 footprint so the shared `ty + 8` trunk-collision offset works for either without a per-type adjustment. (A third variant, `tree_willow`, was tried and dropped — didn't read well; see git history around 2026-07-18 if revisiting.)
 - Bushes/hedges (`B` in level maps) stamp the single `bush` texture **per cell** (16×16, not the 32×32 2-cell blocks trees/gardens use), since a hedge is typically a single-cell-wide row of arbitrary length rather than a 2×2-aligned cluster. They share the exact same cluster/perimeter/auto-mow code path as gardens in `buildObstacleLayer()` (`type === 'G' || type === 'B'`) — the grass underneath turns mowed once the player's fully mowed around them, just hidden under the bush texture (obstacle layer depth 3, above mowed layer depth 1) same as gardens
+- Ponds (`P` in level maps, introduced with Level 4) also stamp per-cell like bushes, but are **permanent water** — no cluster/perimeter tracking, so they never auto-mow no matter what's mowed around them. `buildObstacleLayer()` tracks `this.pondCellCount` (excluded from `totalCells`) and `this.pondBounds` (the cluster's bounding box, assumes a single contiguous pond per level — used to place the frog, see below). A few random cells get a `lilypad` texture stamped on top (~18% chance) for visual variety instead of a flat uniform tile.
 
 ## Mowed Grass Rendering
 Mowed grass is **blocky and grid-aligned, one full cell at a time**. `mowAt(px, py)` figures out which grid cell the player is in and, if it's not already mowed to this depth, stamps the single `mowed_H_full` (16×16, per deck height) texture at that cell's exact center via `this.mowedRT.stamp()`. There's only one texture shape — always full-cell, never a narrower mower-width variant — which is what makes this gap-free on any path (straight, diagonal, turn, parallel lanes) and impossible to bleed past the yard border: every stamp lands at exact grid coordinates already bounds-checked against `YARD_COLS`/`YARD_ROWS`.
@@ -108,14 +109,28 @@ Palette is warm brown (`FUR`/`FUR_DARK`) with a tan muzzle patch, not flat near-
 
 `playDogBark()` (module-level, alongside the other audio functions below) is a two-note "arf-arf" — `square` oscillators (woofier than a raw sawtooth) each swept 400Hz→150Hz, run through a `BiquadFilterNode` lowpass that sweeps down alongside the pitch (2000Hz→500Hz) to round off the harsh top end, with a fast attack and quick exponential decay. (An earlier single-note raw-sawtooth version read as more of a buzz than a bark.)
 
+## Frog and Pond
+Introduced with Level 4. Only exists on levels with a pond (`this.pondBounds` set — `this.frog` stays `null` otherwise, and `updateFrog()`/`drawFrog()` both early-return on that). Unlike the dog, it has **no collision** (purely cosmetic, like the bird/deer/fox) and doesn't relocate — it always jumps to and from the same two points.
+
+`pickFrogSpot()` (called once from `create()`) finds where the frog sits: tries the plain-grass (`'.'`) cell immediately left of the pond's bounding box first, then right, then top, then bottom ("a frog on the side" — side tried before top/bottom), paired with the adjacent pond-edge cell it'll jump into. Returns `null` (no frog) if every side is blocked, rather than crashing.
+
+`updateFrog(dt)`, called every frame from `update()` (no timer, reacts to proximity), is a 4-state machine:
+- **sitting**: once any post-jump cooldown (`cooldownRemaining`, 900ms) has elapsed, checks distance to the player against `TRIGGER_DIST` (40px); if within range, switches to `jumping` and fires `playSplash()`.
+- **jumping**: linearly interpolates from its resting spot to the pond-edge cell over `HOP_MS` (350ms), with a `Math.sin(π·t)` arc (`hop`) applied as a y-offset in `drawFrog()` for a hop rather than a slide.
+- **submerged**: invisible (`drawFrog()` early-returns while in this state) for `SUBMERGED_MS` (2500ms) — genuinely underwater, not just off-screen.
+- **returning**: same arc-hop interpolation back to the resting spot, firing `playSplash()` again, then back to `sitting` with the cooldown set.
+
+`drawFrog()` is simple pixel art (body ellipse, two eye-bump circles, dark pupil dots) drawn at `(x, y - hop)` so the jump/return arc reads as a vertical hop layered on top of the horizontal slide.
+
 ## Audio
 Procedurally synthesized via the raw Web Audio API (`AudioContext`/`OscillatorNode`/`GainNode`/`BiquadFilterNode`) rather than Phaser's sound manager (which is asset-based) or vendored audio files — no assets to source or host. Module-level (`g_audioCtx`, `g_humGain`), created once per page load by `setupAudio()`, not per `scene.restart()`. `setupAudio()` is called from the intro modal's Start button click specifically because that's a genuine user gesture, satisfying the browser's autoplay policy — calling it any earlier would leave the context stuck `suspended`.
 
-Four sounds, all simple and gentle to match the game's low-key "mindless peacefulness" tone rather than reading as game-y sound effects (loud enough to actually register, though — an initial pass at gain 0.05 was nearly inaudible on typical speakers):
+Five sounds, all simple and gentle to match the game's low-key "mindless peacefulness" tone rather than reading as game-y sound effects (loud enough to actually register, though — an initial pass at gain 0.05 was nearly inaudible on typical speakers):
 - **Mower hum**: a single continuous low-pass-filtered triangle oscillator, `start()`ed once and never stopped — oscillators can't be restarted, so movement on/off is expressed by ramping `g_humGain`'s gain (via `setHumActive()`, called every frame from `update()` with whether the player moved that frame) rather than starting/stopping the node, which also avoids audible clicks at the transition.
 - **Win chime**: a short 4-note major arpeggio (`playWinChime()`, called from `showWin()`) — one short-lived oscillator+gain pair per note with a quick attack and exponential decay.
 - **Bird chirp**: a quick two-note "tweet-tweet" (`playBirdChirp()`, called once from `launchBird()`), each note a fast upward pitch sweep in the 2-3kHz range — the classic chirp shape — with a very short envelope so it reads as a brief accent alongside the bird's flight, not an alert.
-- **Dog bark**: a short sawtooth sweep from 340Hz down to 160Hz (`playDogBark()`, called once from `updateDog()` when the dog startles — see the Dog section above) with a fast attack and quick decay, punchy but momentary.
+- **Dog bark**: a two-note "arf-arf" (`playDogBark()`, called once from `updateDog()` when the dog startles — see the Dog section above) — see its own description above for the square+lowpass detail.
+- **Frog splash**: a quick "plop" (`playSplash()`, called from `updateFrog()` on both the jump-in and the jump-out) — a sine oscillator swept 500Hz→120Hz with a fast attack and short decay.
 
 `setHumActive(false)` is called explicitly when the win condition triggers (in `updateHUD()`), since `update()` stops running entirely once `this.won` is true and would otherwise leave the hum wherever it last was.
 
