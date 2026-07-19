@@ -585,19 +585,43 @@ class GameScene extends Phaser.Scene {
 
     // Pond — 16×16, one per cell (like bush), since a pond's a rectangular
     // blob of arbitrary size rather than a 2×2-aligned cluster.
+    const drawPondBase = (g) => {
+      g.fillStyle(0x1f5570);
+      g.fillRect(0, 0, CELL, CELL);
+      g.fillStyle(0x2f7590, 0.5);
+      g.fillRect(0, 3, CELL, 2);
+      g.fillRect(0, 10, CELL, 2);
+      g.fillStyle(0x123f4d, 0.5);
+      g.fillRect(0, 7, CELL, 1);
+      g.fillRect(0, 13, CELL, 1);
+      g.lineStyle(1, 0x000000, 0.15);
+      g.strokeRect(0, 0, CELL, CELL);
+    };
     const pd = this.make.graphics({ add: false });
-    pd.fillStyle(0x1f5570);
-    pd.fillRect(0, 0, CELL, CELL);
-    pd.fillStyle(0x2f7590, 0.5);
-    pd.fillRect(0, 3, CELL, 2);
-    pd.fillRect(0, 10, CELL, 2);
-    pd.fillStyle(0x123f4d, 0.5);
-    pd.fillRect(0, 7, CELL, 1);
-    pd.fillRect(0, 13, CELL, 1);
-    pd.lineStyle(1, 0x000000, 0.15);
-    pd.strokeRect(0, 0, CELL, CELL);
+    drawPondBase(pd);
     pd.generateTexture('pond', CELL, CELL);
     pd.destroy();
+
+    // Corner variants — the same water tile with a grass-colored
+    // triangular notch cut into the outer corner. buildObstacleLayer()
+    // uses these at the 4 corners of a pond's bounding box (collision
+    // stays the full rectangle; this is purely visual) so the overall
+    // silhouette reads as rounded rather than a sharp-edged block.
+    const NOTCH = 7;
+    const pondCorners = {
+      tl: [[0, 0], [NOTCH, 0], [0, NOTCH]],
+      tr: [[CELL, 0], [CELL - NOTCH, 0], [CELL, NOTCH]],
+      bl: [[0, CELL], [NOTCH, CELL], [0, CELL - NOTCH]],
+      br: [[CELL, CELL], [CELL - NOTCH, CELL], [CELL, CELL - NOTCH]],
+    };
+    for (const [key, tri] of Object.entries(pondCorners)) {
+      const pc = this.make.graphics({ add: false });
+      drawPondBase(pc);
+      pc.fillStyle(C.bg);
+      pc.fillTriangle(tri[0][0], tri[0][1], tri[1][0], tri[1][1], tri[2][0], tri[2][1]);
+      pc.generateTexture(`pond_corner_${key}`, CELL, CELL);
+      pc.destroy();
+    }
 
     // Lily pad — small decorative overlay stamped on a few random pond
     // cells (see buildObstacleLayer()), not every cell, for visual variety.
@@ -612,6 +636,28 @@ class GameScene extends Phaser.Scene {
     lp.fillTriangle(8, 8, 12, 6, 12, 10); // notch, classic lily-pad wedge
     lp.generateTexture('lilypad', CELL, CELL);
     lp.destroy();
+
+    // Cattail — tall stalks with a cigar-shaped brown seed head, stamped
+    // on the grass ring bordering a pond (not the pond itself — see
+    // buildObstacleLayer()) as a purely decorative, non-collidable shore
+    // accent, matching how lily pads/wildflowers are similarly optional.
+    const ct = this.make.graphics({ add: false });
+    ct.fillStyle(0x000000, 0.15);
+    ct.fillEllipse(8, 14, 6, 2);
+    ct.fillStyle(0x2f6a1a);
+    ct.fillRect(6, 6, 1, 9);
+    ct.fillRect(10, 4, 1, 11);
+    ct.fillStyle(0x3f8a25);
+    ct.fillRect(7, 6, 1, 9);
+    ct.fillRect(11, 4, 1, 11);
+    ct.fillStyle(0x5a3a1a);
+    ct.fillEllipse(6, 5, 3, 6);
+    ct.fillEllipse(10, 3, 3, 7);
+    ct.fillStyle(0x6a4a22, 0.7);
+    ct.fillEllipse(6, 4, 2, 4);
+    ct.fillEllipse(10, 2, 2, 5);
+    ct.generateTexture('cattail', CELL, CELL);
+    ct.destroy();
   }
 
   buildBackground() {
@@ -877,11 +923,23 @@ class GameScene extends Phaser.Scene {
           // 32×32 2-cell block like trees/gardens use) — a hedge is often
           // a single-cell-wide row, and a pond an arbitrary rectangle, so
           // neither is guaranteed 2×2-aligned.
-          const key = type === 'B' ? 'bush' : 'pond';
           for (let dr = 0; dr < cH; dr++) {
             for (let dc = 0; dc < cw; dc++) {
               const bx = (YARD_X + c + dc) * CELL + CELL / 2;
               const by = (YARD_Y + r + dr) * CELL + CELL / 2;
+              let key = type === 'B' ? 'bush' : 'pond';
+              // A pond's 4 bounding-box corners use the notched variant
+              // instead of the plain tile, so the overall shape reads as
+              // rounded rather than a sharp rectangle (collision is still
+              // the full rect — this is purely visual).
+              if (type === 'P') {
+                const isTop = dr === 0, isBottom = dr === cH - 1;
+                const isLeft = dc === 0, isRight = dc === cw - 1;
+                if (isTop && isLeft) key = 'pond_corner_tl';
+                else if (isTop && isRight) key = 'pond_corner_tr';
+                else if (isBottom && isLeft) key = 'pond_corner_bl';
+                else if (isBottom && isRight) key = 'pond_corner_br';
+              }
               this.obstacleRT.stamp(key, null, bx, by);
               // A few random lily pads scattered across the pond for
               // visual variety, rather than every cell looking identical.
@@ -904,6 +962,25 @@ class GameScene extends Phaser.Scene {
               const ty = (YARD_Y + r + dr) * CELL + CELL;
               this.obstacleRT.stamp(key, null, tx, ty);
             }
+          }
+        }
+      }
+    }
+
+    // Cattails: a few scattered on the plain-grass ring bordering a pond
+    // (not the pond itself), purely decorative like the lily pads — a
+    // shoreline accent rather than every bordering cell getting one.
+    if (this.pondBounds) {
+      const { minR, maxR, minC, maxC } = this.pondBounds;
+      for (let r = minR - 1; r <= maxR + 1; r++) {
+        for (let c = minC - 1; c <= maxC + 1; c++) {
+          if (r < 0 || r >= YARD_ROWS || c < 0 || c >= YARD_COLS) continue;
+          if (r >= minR && r <= maxR && c >= minC && c <= maxC) continue;
+          if (map[r][c] !== '.') continue;
+          if (Math.random() < 0.22) {
+            const bx = (YARD_X + c) * CELL + CELL / 2;
+            const by = (YARD_Y + r) * CELL + CELL / 2;
+            this.obstacleRT.stamp('cattail', null, bx, by);
           }
         }
       }

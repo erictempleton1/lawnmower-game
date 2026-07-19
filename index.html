@@ -120,17 +120,17 @@
       cursor: default;
     }
     /* Touch devices: the mouse-precision size above is too small a target
-       to reliably tap. Bump both buttons up well past the ~18px they'd
-       otherwise render at (the whole #ui-canvas overlay is CSS-scaled to
-       match the canvas, so this is still comfortably tappable once scaled). */
+       to reliably tap, but a much bigger button read as too visually
+       heavy/distracting next to the small level text. A modest bump
+       instead of the full 44px touch-target guideline. */
     @media (hover: none) and (pointer: coarse) {
       .level-nav-btn {
-        width: 42px;
-        height: 42px;
-        font-size: 22px;
-        border-radius: 8px;
+        width: 24px;
+        height: 24px;
+        font-size: 15px;
+        border-radius: 5px;
       }
-      #level-nav { gap: 8px; }
+      #level-nav { gap: 6px; }
     }
 
     /* ── Win overlay ─────────────────────────────────────────────────────── */
