@@ -458,6 +458,23 @@ class GameScene extends Phaser.Scene {
       gfAlt.strokeRect(0, 0, CELL, CELL);
       gfAlt.generateTexture(`mowed_${h}_full_alt`, CELL, CELL);
       gfAlt.destroy();
+
+      // A much gentler variant — same idea, but only ~6% darker instead of
+      // 15%. Used by the higher-frequency patterns ('checker' alternates
+      // every single cell in both directions, 'diagonal' every 2) where the
+      // full-strength alt shade reads as busy/noisy rather than a subtle
+      // accent; 'stripe'/'rings' alternate more coarsely and read fine at
+      // the stronger contrast.
+      const gfSubtle = this.make.graphics({ add: false });
+      gfSubtle.fillStyle(shadeColor(base, 0.94));
+      gfSubtle.fillRect(0, 0, CELL, CELL);
+      gfSubtle.fillStyle(shadeColor(stripe, 0.94), 0.5);
+      gfSubtle.fillRect(2, 0, 3, CELL);
+      gfSubtle.fillRect(10, 0, 2, CELL);
+      gfSubtle.lineStyle(1, 0x000000, 0.05);
+      gfSubtle.strokeRect(0, 0, CELL, CELL);
+      gfSubtle.generateTexture(`mowed_${h}_full_altSubtle`, CELL, CELL);
+      gfSubtle.destroy();
     }
   }
 
@@ -473,9 +490,13 @@ class GameScene extends Phaser.Scene {
   //   wide bands — diagonal stripes running at 45°, same band thickness as
   //   'stripe' just along the other axis.
   // Any other/missing value renders a flat, uniform mow (unchanged from
-  // before mow patterns existed).
+  // before mow patterns existed). checker/diagonal alternate far more
+  // frequently (every 1-2 cells, in both directions) than stripe/rings, so
+  // they use the gentler '_altSubtle' texture instead of '_alt' — the same
+  // contrast read as busy/noisy at full strength.
   mowedTextureKey(h, gc, gr) {
     let alt = false;
+    let subtle = false;
     if (this.levelData.mowPattern === 'stripe') {
       alt = gc % 2 === 1;
     } else if (this.levelData.mowPattern === 'rings') {
@@ -485,10 +506,13 @@ class GameScene extends Phaser.Scene {
       alt = ring % 2 === 1;
     } else if (this.levelData.mowPattern === 'checker') {
       alt = (gc + gr) % 2 === 1;
+      subtle = true;
     } else if (this.levelData.mowPattern === 'diagonal') {
       alt = Math.floor((gc + gr) / 2) % 2 === 1;
+      subtle = true;
     }
-    return `mowed_${h}_full${alt ? '_alt' : ''}`;
+    if (!alt) return `mowed_${h}_full`;
+    return `mowed_${h}_full${subtle ? '_altSubtle' : '_alt'}`;
   }
 
   buildLevelTextures() {
