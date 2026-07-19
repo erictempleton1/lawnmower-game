@@ -156,8 +156,10 @@
     /* ── Bottom percentage readout: replaces the old top progress bar.
        Default (desktop/landscape): fixed to the opposite corner from the
        D-pad, same technique #dpad uses to float free of the zero-height
-       #controls-spacer box in that mode. Portrait: a plain flex sibling
-       of #dpad instead, so it sits right next to it in the centered row. */
+       #controls-spacer box in that mode. Portrait: pinned to the right
+       edge of #controls-spacer (still position:relative in that mode)
+       instead of sitting in the flex row next to the D-pad — keeps a
+       clear gap between them instead of just a small margin. */
     #hud-pct-bottom {
       position: fixed;
       right: 18px;
@@ -172,9 +174,11 @@
     }
     @media (hover: none) and (pointer: coarse) and (orientation: portrait) {
       #hud-pct-bottom {
-        position: relative;
-        right: auto; bottom: auto;
-        margin-left: 18px;
+        position: absolute;
+        right: 20px;
+        bottom: auto;
+        top: 50%;
+        transform: translateY(-50%);
         font-size: 20px;
       }
     }
