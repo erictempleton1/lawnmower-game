@@ -120,6 +120,60 @@
     #win-next   { color: #dddddd; font-size: 15px; margin: 0 0 8px; }
     #win-action { color: #777777; font-size: 12px; margin: 0; }
 
+    /* ── Intro overlay: shown once at the very start of the game, before
+       the first level. Visible by default in markup (not toggled by JS
+       until Start is tapped) so it's already up the instant the loading
+       screen (z-index 30, above this) hides. ─────────────────────────── */
+    #intro-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      justify-content: center;
+      align-items: center;
+      z-index: 10;
+      pointer-events: none;
+    }
+    #intro-overlay.visible {
+      display: flex;
+      pointer-events: auto;
+    }
+    #intro-box {
+      background: rgba(0, 18, 0, 0.93);
+      border: 2px solid #3a6a3a;
+      border-radius: 10px;
+      padding: 28px 40px;
+      text-align: center;
+      font-family: Arial, Helvetica, sans-serif;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.7);
+      max-width: 300px;
+    }
+    #intro-box h2 {
+      color: #88ff88;
+      font-size: 28px;
+      font-weight: 700;
+      margin: 0 0 10px;
+      letter-spacing: 1px;
+    }
+    #intro-text {
+      color: #dddddd;
+      font-size: 15px;
+      line-height: 1.4;
+      margin: 0 0 18px;
+    }
+    #intro-start-btn {
+      background: #3a8a3a;
+      color: #ffffff;
+      border: 2px solid #5aca5a;
+      border-radius: 8px;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      padding: 10px 32px;
+      cursor: pointer;
+    }
+    #intro-start-btn:active { background: #2a6a2a; }
+
     /* ── Mobile D-pad: touch-only, hidden for mouse/desktop ─────────────── */
     #dpad {
       display: none;
@@ -276,6 +330,15 @@
       <h2>YARD DONE!</h2>
       <p id="win-next"></p>
       <p id="win-action"></p>
+    </div>
+  </div>
+
+  <!-- Intro screen: shown once, before the first level -->
+  <div id="intro-overlay" class="visible">
+    <div id="intro-box">
+      <h2>LET'S MOW!</h2>
+      <p id="intro-text">Use the controls below to move around and mow the whole yard.</p>
+      <button id="intro-start-btn">Start</button>
     </div>
   </div>
 

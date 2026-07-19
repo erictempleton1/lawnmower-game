@@ -64,6 +64,10 @@ const DECK = [
 // random per contiguous tree cluster in buildObstacleLayer().
 const TREE_TYPES = ['tree_round', 'tree_evergreen'];
 
+// Module-level so it survives scene.restart() — the intro modal is shown
+// once, before the very first level, not again on every level transition.
+let g_introShown = false;
+
 // Pads an authored level map out to YARD_ROWS×YARD_COLS with plain grass,
 // centering the original layout. A no-op once a map is already the right
 // size, so it's safe to call again on scene.restart (which reuses the same
@@ -124,6 +128,10 @@ class GameScene extends Phaser.Scene {
     this.speedStep      = SPEED_STEP;
     this.squirrel       = { active: false };
     this.squirrelCount  = 0;
+    // Gated on the intro modal for the very first level only — see
+    // buildIntroOverlay(). Already-dismissed (g_introShown) on every
+    // level after that, so play starts immediately without re-showing it.
+    this.started        = g_introShown;
 
     this.buildMowedTextures();
     this.buildBackground();
@@ -136,6 +144,7 @@ class GameScene extends Phaser.Scene {
     this.setupInput();
     this.buildHUD();
     this.buildWinOverlay();
+    this.buildIntroOverlay();
     this.syncUIOverlay();
     this.scale.on('resize', this.syncUIOverlay, this);
 
@@ -143,7 +152,7 @@ class GameScene extends Phaser.Scene {
     this.squirrelGfx.setDepth(4);
 
     this.mowAt(this.player.x, this.player.y);
-    this.scheduleSquirrel();
+    if (g_introShown) this.scheduleSquirrel();
 
     document.getElementById('loading-screen')?.classList.add('hidden');
   }
@@ -737,6 +746,27 @@ class GameScene extends Phaser.Scene {
     });
   }
 
+  // Shown once, before the very first level — blocks movement/mowing
+  // (see update()'s this.started check) until the player taps Start.
+  // Skipped entirely (including re-wiring the button) once g_introShown,
+  // since it's never shown again for the rest of the session.
+  buildIntroOverlay() {
+    if (g_introShown) return;
+    const introEl  = document.getElementById('intro-overlay');
+    const startBtn = document.getElementById('intro-start-btn');
+    const begin = () => {
+      g_introShown  = true;
+      this.started  = true;
+      introEl.classList.remove('visible');
+      this.scheduleSquirrel();
+    };
+    // Assigned (not addEventListener) since this button persists across
+    // scene.restart(), matching the win-overlay/dpad pattern elsewhere.
+    startBtn.onclick = begin;
+    this.input.keyboard.once('keydown-ENTER', begin);
+    this.input.keyboard.once('keydown-SPACE', begin);
+  }
+
   advanceLevel() {
     const next = (this.currentLevel + 1) % this.allLevels.length;
     this.hideWin();
@@ -904,7 +934,7 @@ class GameScene extends Phaser.Scene {
   // ── Update loop ───────────────────────────────────────────────────────────
 
   update(_, delta) {
-    if (this.won) return;
+    if (this.won || !this.started) return;
 
     const dt = delta / 1000;
     const c  = this.cursors;
