@@ -79,9 +79,13 @@
       line-height: 1;
       white-space: nowrap;
     }
-    #hud-level  { left: 8px;  top: 6px; font-size: 9px; color: #ffcc44; font-weight: 700; }
-    #hud-mow    { left: 30px; top: 6px; font-size: 9px; color: #aaffaa; }
-    #hud-pct    { right: 46px; top: 6px; font-size: 10px; color: #ffffff; font-weight: 600; }
+    /* No background bar behind it anymore, so it needs its own contrast
+       against whatever's under it (grass, obstacles, mowed cells). */
+    #hud-level {
+      left: 8px; top: 6px;
+      font-size: 10px; color: #ffcc44; font-weight: 700;
+      text-shadow: 0 0 3px rgba(0,0,0,0.9), 0 0 3px rgba(0,0,0,0.9), 1px 1px 0 rgba(0,0,0,0.9);
+    }
 
     /* ── Win overlay ─────────────────────────────────────────────────────── */
     #win-overlay {
@@ -147,6 +151,32 @@
       #dpad #dpad-left  { left: 0;    top: 52px; }
       #dpad #dpad-right { left: 104px; top: 52px; }
       #dpad #dpad-down  { left: 52px; top: 104px; }
+    }
+
+    /* ── Bottom percentage readout: replaces the old top progress bar.
+       Default (desktop/landscape): fixed to the opposite corner from the
+       D-pad, same technique #dpad uses to float free of the zero-height
+       #controls-spacer box in that mode. Portrait: a plain flex sibling
+       of #dpad instead, so it sits right next to it in the centered row. */
+    #hud-pct-bottom {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 18px;
+      font-weight: 700;
+      color: #ffffff;
+      text-shadow: 0 0 4px rgba(0,0,0,0.9), 0 0 4px rgba(0,0,0,0.9);
+      z-index: 20;
+      pointer-events: none;
+    }
+    @media (hover: none) and (pointer: coarse) and (orientation: portrait) {
+      #hud-pct-bottom {
+        position: relative;
+        right: auto; bottom: auto;
+        margin-left: 18px;
+        font-size: 20px;
+      }
     }
     .dpad-btn {
       position: absolute;
@@ -226,14 +256,13 @@
       <button id="dpad-right" class="dpad-btn" aria-label="Right">▶</button>
       <button id="dpad-down"  class="dpad-btn" aria-label="Down">▼</button>
     </div>
+    <div id="hud-pct-bottom">0%</div>
   </div>
 
   <!-- UI text overlay (positioned over canvas by JS) -->
   <div id="ui-layer">
     <div id="ui-canvas">
       <span id="hud-level"  class="ui-text">L1</span>
-      <span id="hud-mow"    class="ui-text">MOW</span>
-      <span id="hud-pct"    class="ui-text">0%</span>
     </div>
   </div>
 

@@ -73,5 +73,8 @@ Sprinklers (a periodic pop-up spray animation that reverted a small mowed patch 
 ## Mobile Layout
 `#game-container` hosts the Phaser canvas (`scale.parent` in the game config); `#controls-spacer` (a sibling, sized via CSS flex) reserves room below it for the D-pad, real height only in portrait+touch (see media queries in `index.html`). `applyResponsiveLayout()` in `game.js` sets `#game-container`'s `aspect-ratio` from the computed `W`/`H` so Phaser's FIT scaling fills it with no dead space. The D-pad itself gets a slightly smaller, portrait-specific size/layout (`156px`, nested inside `#controls-spacer`) vs. its default fixed-position landscape sizing (`192px`, floating over the canvas's side dead zone) — portrait is capped tighter to comfortably fit `CONTROL_RESERVE_PX`'s ~190px reserved zone.
 
+## HUD
+No progress bar — just the level indicator (`#hud-level`, still in the canvas-scaled `#ui-canvas` overlay, with a `text-shadow` for contrast now that there's no background bar behind it) and a plain percentage readout (`#hud-pct-bottom`) docked near the D-pad, outside the canvas entirely, as a sibling of `#dpad` inside `#controls-spacer`. Default (desktop/landscape): `position: fixed` in the opposite corner from the D-pad, the same technique `#dpad` uses to float free of `#controls-spacer`'s zero-height box in that mode. Portrait: a plain flex child instead, sitting right next to the centered D-pad in the same row.
+
 ## Deploying
 Commit and push to `main` — GitHub Actions workflow in `.github/workflows/deploy.yml` handles the rest. Live at https://erictempleton1.github.io/lawnmower-game/

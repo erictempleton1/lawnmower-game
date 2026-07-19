@@ -671,14 +671,11 @@ class GameScene extends Phaser.Scene {
   // ── HUD ───────────────────────────────────────────────────────────────────
 
   buildHUD() {
-    this.add.rectangle(W / 2, 8, W - 16, 14, 0x000000, 0.7).setOrigin(0.5, 0).setDepth(10);
-    this.barBg = this.add.rectangle(58, 11, W - 110, 8, 0x333333).setOrigin(0, 0.5).setDepth(10);
-    this.bar   = this.add.rectangle(58, 11, 0, 8, 0x66dd22).setOrigin(0, 0.5).setDepth(10);
-    this.barW  = W - 110;
-
-    // Text lives in the HTML overlay — just grab refs
+    // No progress bar — just the level indicator (in the canvas overlay)
+    // and a plain percentage readout docked near the D-pad, outside the
+    // canvas entirely (see #hud-pct-bottom in index.html).
     document.getElementById('hud-level').textContent = `L${this.currentLevel + 1}`;
-    this.pctEl = document.getElementById('hud-pct');
+    this.pctEl = document.getElementById('hud-pct-bottom');
     this.pctEl.textContent = '0%';
   }
 
@@ -871,7 +868,6 @@ class GameScene extends Phaser.Scene {
 
   updateHUD() {
     const pct = this.mowedCount / this.totalCells;
-    this.bar.width = this.barW * pct;
     this.pctEl.textContent = Math.floor(pct * 100) + '%';
     if (pct * 100 >= WIN_PCT && !this.won) {
       this.won = true;
