@@ -47,7 +47,7 @@ Player is at depth 2 so he walks visually under the tree canopy (depth 3).
 UI text lives in `#ui-canvas` (a `position:absolute` div over the canvas) to avoid the `image-rendering: pixelated` CSS blurring canvas text. `syncUIOverlay()` reads `canvasBounds` and applies a CSS `scale()` transform to match the Phaser FIT scale.
 
 ## Decorative Border
-The unmowable border margin (outside `YARD_X`/`YARD_Y`) is dark wild grass (`0x1e3a12`) with denser/taller accent blades than the yard's own, plus a bigger, more muted `bg_tree` texture scattered around all 4 sides — purely cosmetic, baked into the depth-0 background RT in `buildBackground()`, no collision (the border was already unreachable). `bg_tree` is generated inline in `buildBackground()` itself rather than in `buildLevelTextures()`, since the latter runs later (from `buildObstacleLayer()`).
+The unmowable border margin (outside `YARD_X`/`YARD_Y`) is dark wild grass (`0x1e3a12`) with denser/taller accent blades than the yard's own, small scattered wildflowers (same sampling loop as the blades, ~10% chance per sample point, random pick from a small color palette), plus a bigger, more muted `bg_tree` texture scattered around all 4 sides — purely cosmetic, baked into the depth-0 background RT in `buildBackground()`, no collision (the border was already unreachable). `bg_tree` is generated inline in `buildBackground()` itself rather than in `buildLevelTextures()`, since the latter runs later (from `buildObstacleLayer()`).
 
 ## Obstacle System
 - `obstacleGrid[r][c]` — gardens and bushes/hedges (full block); trees don't set this

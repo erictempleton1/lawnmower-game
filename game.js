@@ -339,17 +339,31 @@ class GameScene extends Phaser.Scene {
     }
 
     // Wild grass blades across the whole border margin — denser and
-    // taller than the yard's own accent blades, to read as unmown.
+    // taller than the yard's own accent blades, to read as unmown — plus
+    // scattered wildflowers as small colorful accents among them.
     const yardL = YARD_X * CELL, yardT = YARD_Y * CELL;
     const yardR = (YARD_X + YARD_COLS) * CELL, yardB = (YARD_Y + YARD_ROWS) * CELL;
+    const wildflowerColors = [0xff5555, 0xffdd44, 0xcc55ff, 0xff8844, 0x55ccff, 0xffffff];
     for (let y = 4; y < H; y += 7) {
       for (let x = 4; x < W; x += 7) {
         if (x > yardL && x < yardR && y > yardT && y < yardB) continue;
-        if (Math.random() > 0.55) continue;
-        const bh    = 5 + Math.floor(Math.random() * 8);
-        const alpha = 0.4 + Math.random() * 0.3;
-        g.fillStyle(0x0f2408, alpha);
-        g.fillRect(x + Phaser.Math.Between(-2, 2), y - bh, 1, bh);
+        if (Math.random() <= 0.55) {
+          const bh    = 5 + Math.floor(Math.random() * 8);
+          const alpha = 0.4 + Math.random() * 0.3;
+          g.fillStyle(0x0f2408, alpha);
+          g.fillRect(x + Phaser.Math.Between(-2, 2), y - bh, 1, bh);
+        }
+        if (Math.random() <= 0.1) {
+          const fx = x + Phaser.Math.Between(-2, 2);
+          const fy = y + Phaser.Math.Between(-2, 2);
+          const fc = wildflowerColors[Phaser.Math.Between(0, wildflowerColors.length - 1)];
+          g.fillStyle(0x2a5a1a, 0.85);
+          g.fillRect(fx, fy, 1, 3);          // stem
+          g.fillStyle(fc, 0.95);
+          g.fillRect(fx - 1, fy - 2, 3, 3);  // bloom
+          g.fillStyle(0xffffff, 0.6);
+          g.fillRect(fx, fy - 1, 1, 1);      // center highlight
+        }
       }
     }
 
