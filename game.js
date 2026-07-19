@@ -128,6 +128,8 @@ class GameScene extends Phaser.Scene {
     this.speedStep      = SPEED_STEP;
     this.squirrel       = { active: false };
     this.squirrelCount  = 0;
+    this.bird           = { active: false };
+    this.deer           = { active: false };
     // Gated on the intro modal for the very first level only — see
     // buildIntroOverlay(). Already-dismissed (g_introShown) on every
     // level after that, so play starts immediately without re-showing it.
@@ -150,9 +152,17 @@ class GameScene extends Phaser.Scene {
 
     this.squirrelGfx = this.add.graphics();
     this.squirrelGfx.setDepth(4);
+    this.birdGfx = this.add.graphics();
+    this.birdGfx.setDepth(4);
+    this.deerGfx = this.add.graphics();
+    this.deerGfx.setDepth(4);
 
     this.mowAt(this.player.x, this.player.y);
-    if (g_introShown) this.scheduleSquirrel();
+    if (g_introShown) {
+      this.scheduleSquirrel();
+      this.scheduleBird();
+      this.scheduleDeer();
+    }
 
     document.getElementById('loading-screen')?.classList.add('hidden');
   }
@@ -741,8 +751,12 @@ class GameScene extends Phaser.Scene {
     this.events.on('shutdown', () => {
       this.hideWin();
       this.scale.off('resize', this.syncUIOverlay, this);
-      if (this.squirrelTimer)  this.squirrelTimer.remove();
+      if (this.squirrelTimer) this.squirrelTimer.remove();
+      if (this.birdTimer)     this.birdTimer.remove();
+      if (this.deerTimer)     this.deerTimer.remove();
       this.squirrelGfx?.clear();
+      this.birdGfx?.clear();
+      this.deerGfx?.clear();
     });
   }
 
@@ -759,6 +773,8 @@ class GameScene extends Phaser.Scene {
       this.started  = true;
       introEl.classList.remove('visible');
       this.scheduleSquirrel();
+      this.scheduleBird();
+      this.scheduleDeer();
     };
     // Assigned (not addEventListener) since this button persists across
     // scene.restart(), matching the win-overlay/dpad pattern elsewhere.
@@ -922,6 +938,144 @@ class GameScene extends Phaser.Scene {
     else              g.fillRect(x+1,  by-6, 1, 1);
   }
 
+  // ── Birds ─────────────────────────────────────────────────────────────────
+  // Purely cosmetic, confined to the border margin (never cross into the
+  // yard) — a small silhouette drifting along one edge every once in a
+  // while, no collision, no per-level cap (unlike squirrels/former
+  // sprinklers, these never interact with mowing at all).
+
+  scheduleBird() {
+    if (this.won) return;
+    this.birdTimer = this.time.delayedCall(
+      Phaser.Math.Between(15000, 30000), this.launchBird, [], this);
+  }
+
+  launchBird() {
+    if (this.won) return;
+    const marginX = YARD_X * CELL, marginY = YARD_Y * CELL;
+    const strip = Phaser.Math.Between(0, 3); // 0=top, 1=bottom, 2=left, 3=right
+    const forward = Phaser.Math.Between(0, 1) === 0;
+    let x, y, dx, dy;
+    if (strip === 0 || strip === 1) {
+      y = strip === 0
+        ? Phaser.Math.Between(6, marginY - 6)
+        : Phaser.Math.Between(H - marginY + 6, H - 6);
+      x  = forward ? -12 : W + 12;
+      dx = forward ? 1 : -1;
+      dy = 0;
+    } else {
+      x = strip === 2
+        ? Phaser.Math.Between(6, marginX - 6)
+        : Phaser.Math.Between(W - marginX + 6, W - 6);
+      y  = forward ? -12 : H + 12;
+      dy = forward ? 1 : -1;
+      dx = 0;
+    }
+    this.bird = { active: true, x, y, dx, dy };
+  }
+
+  updateBird(dt) {
+    if (!this.bird.active) return;
+    const BIRD_SPEED = 70;
+    this.bird.x += this.bird.dx * BIRD_SPEED * dt;
+    this.bird.y += this.bird.dy * BIRD_SPEED * dt;
+    if (this.bird.x < -20 || this.bird.x > W + 20 || this.bird.y < -20 || this.bird.y > H + 20) {
+      this.bird.active = false;
+      this.birdGfx.clear();
+      this.scheduleBird();
+      return;
+    }
+    this.drawBird();
+  }
+
+  drawBird() {
+    const g = this.birdGfx;
+    g.clear();
+    const { x, y, dx, dy } = this.bird;
+    // A gentle perpendicular flutter so the flight path isn't perfectly
+    // straight, purely visual (doesn't affect the tracked x/y).
+    const flutter = Math.sin(Date.now() / 200) * 3;
+    const bx = x + (dy !== 0 ? flutter : 0);
+    const by = y + (dx !== 0 ? flutter : 0);
+    // Two-frame wing flap — a small silhouette, same shape regardless of
+    // travel direction (a bird's wing-flap silhouette reads the same from
+    // below no matter which way it's flying). Light color, not dark — a
+    // dark silhouette barely shows up against the similarly-dark wild
+    // grass border.
+    const flapUp = Math.floor(Date.now() / 120) % 2 === 0;
+    g.lineStyle(2, 0xf0f0e8, 0.95);
+    if (flapUp) {
+      g.lineBetween(bx - 5, by - 3, bx, by);
+      g.lineBetween(bx, by, bx + 5, by - 3);
+    } else {
+      g.lineBetween(bx - 5, by + 1, bx, by);
+      g.lineBetween(bx, by, bx + 5, by + 1);
+    }
+  }
+
+  // ── Deer ──────────────────────────────────────────────────────────────────
+  // Peeks partway out from the border trees on the left/right side, holds
+  // for a moment, then retreats back out of view. Purely cosmetic, stays
+  // within the border margin the whole time.
+
+  scheduleDeer() {
+    if (this.won) return;
+    this.deerTimer = this.time.delayedCall(
+      Phaser.Math.Between(20000, 40000), this.launchDeer, [], this);
+  }
+
+  launchDeer() {
+    if (this.won) return;
+    const onLeft = Phaser.Math.Between(0, 1) === 0;
+    const y = Phaser.Math.Between(YARD_Y * CELL + 20, (YARD_Y + YARD_ROWS) * CELL - 20);
+    this.deer = { active: true, onLeft, y, phase: 'peek', elapsed: 0, t: 0 };
+  }
+
+  updateDeer(dt) {
+    if (!this.deer.active) return;
+    const PEEK_MS = 900, HOLD_MS = 2200, RETREAT_MS = 900;
+    this.deer.elapsed += dt * 1000;
+    if (this.deer.phase === 'peek') {
+      this.deer.t = Math.min(1, this.deer.elapsed / PEEK_MS);
+      if (this.deer.elapsed >= PEEK_MS) { this.deer.phase = 'hold'; this.deer.elapsed = 0; }
+    } else if (this.deer.phase === 'hold') {
+      this.deer.t = 1;
+      if (this.deer.elapsed >= HOLD_MS) { this.deer.phase = 'retreat'; this.deer.elapsed = 0; }
+    } else {
+      this.deer.t = Math.max(0, 1 - this.deer.elapsed / RETREAT_MS);
+      if (this.deer.elapsed >= RETREAT_MS) {
+        this.deer.active = false;
+        this.deerGfx.clear();
+        this.scheduleDeer();
+        return;
+      }
+    }
+    this.drawDeer();
+  }
+
+  drawDeer() {
+    const g = this.deerGfx;
+    g.clear();
+    const { onLeft, y, t } = this.deer;
+    // t=0 fully hidden off the canvas edge, t=1 peeking partway into the
+    // border margin — never far enough to reach the yard itself.
+    const peekDepth = 20;
+    const baseX = onLeft ? -14 : W + 14;
+    const x     = onLeft ? baseX + peekDepth * t : baseX - peekDepth * t;
+    const headX = onLeft ? x + 6 : x - 6;
+
+    // Same muted, background-scenery palette as bg_tree/bg_pine.
+    g.fillStyle(0x000000, 0.2);
+    g.fillEllipse(x, y + 10, 16, 4);
+    g.fillStyle(0x4a3823);
+    g.fillRect(x - 6, y - 4, 12, 10);
+    g.fillStyle(0x5a4830);
+    g.fillRect(headX - 3, y - 9, 7, 7);
+    g.fillStyle(0x3a2c1a);
+    g.fillRect(headX - 2, y - 11, 2, 3);
+    g.fillRect(headX + 3, y - 11, 2, 3);
+  }
+
   updateHUD() {
     const pct = this.mowedCount / this.totalCells;
     this.pctEl.textContent = Math.floor(pct * 100) + '%';
@@ -987,6 +1141,8 @@ class GameScene extends Phaser.Scene {
     this.mowAt(this.player.x, this.player.y);
     this.drawPlayer();
     this.updateSquirrel(dt);
+    this.updateBird(dt);
+    this.updateDeer(dt);
     this.drawJoystick();
   }
 }
