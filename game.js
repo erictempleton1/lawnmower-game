@@ -407,22 +407,25 @@ class GameScene extends Phaser.Scene {
     // cosmetic (no collision — the border is already unreachable).
     const margin = 20;
     for (let x = margin; x < W - margin; x += 66)
-      rt.stamp('bg_tree', null, x + Phaser.Math.Between(-12, 12), margin);
+      rt.stamp('bg_tree', null, x + Phaser.Math.Between(-4, 4), margin);
     for (let x = margin; x < W - margin; x += 66)
-      rt.stamp('bg_tree', null, x + Phaser.Math.Between(-12, 12), H - margin);
+      rt.stamp('bg_tree', null, x + Phaser.Math.Between(-4, 4), H - margin);
     for (let y = yardT + margin; y < yardB - margin; y += 66)
-      rt.stamp('bg_tree', null, margin, y + Phaser.Math.Between(-12, 12));
+      rt.stamp('bg_tree', null, margin, y + Phaser.Math.Between(-4, 4));
     for (let y = yardT + margin; y < yardB - margin; y += 66)
-      rt.stamp('bg_tree', null, W - margin, y + Phaser.Math.Between(-12, 12));
+      rt.stamp('bg_tree', null, W - margin, y + Phaser.Math.Between(-4, 4));
 
     // Pine trees staggered in alongside the side bg_trees — offset half a
-    // step vertically and tucked a bit closer to the outer edge, so the
-    // two rows interleave into a layered tree line instead of a single
-    // flat row.
+    // step vertically and tucked further out toward the outer edge, so
+    // the two rows interleave into a layered tree line instead of
+    // overlapping. Jitter is kept small on both this and the bg_tree
+    // loops above — the original ±12/±10px jitter combined with only an
+    // 8px x-offset let a pine land almost on top of a round tree often
+    // enough that its trunk would poke out through the other's canopy.
     for (let y = yardT + margin + 33; y < yardB - margin; y += 66)
-      rt.stamp('bg_pine', null, margin - 8, y + Phaser.Math.Between(-10, 10));
+      rt.stamp('bg_pine', null, margin - 18, y + Phaser.Math.Between(-4, 4));
     for (let y = yardT + margin + 33; y < yardB - margin; y += 66)
-      rt.stamp('bg_pine', null, W - margin + 8, y + Phaser.Math.Between(-10, 10));
+      rt.stamp('bg_pine', null, W - margin + 18, y + Phaser.Math.Between(-4, 4));
 
     rt.render();
     g.destroy();
