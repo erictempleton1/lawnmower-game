@@ -286,9 +286,29 @@ class GameScene extends Phaser.Scene {
   }
 
   buildBackground() {
+    // Self-contained (not in buildLevelTextures()) since this runs before
+    // that does — the unmowable border gets its own bigger, more muted
+    // decorative tree, scattered purely for atmosphere with no collision.
+    const BG_S = 44;
+    const bt = this.make.graphics({ add: false });
+    bt.fillStyle(0x000000, 0.25);
+    bt.fillEllipse(BG_S / 2, BG_S - 6, BG_S * 0.7, 7);
+    bt.fillStyle(0x4a3018);
+    bt.fillRect(BG_S / 2 - 4, BG_S - 18, 8, 15);
+    bt.fillStyle(0x16300f);
+    bt.fillCircle(BG_S / 2, BG_S / 2 - 4, BG_S * 0.42);
+    bt.fillStyle(0x1f4014);
+    bt.fillCircle(BG_S / 2 - 2, BG_S / 2 - 6, BG_S * 0.34);
+    bt.fillStyle(0x2a5019);
+    bt.fillCircle(BG_S / 2 - 4, BG_S / 2 - 9, BG_S * 0.24);
+    bt.generateTexture('bg_tree', BG_S, BG_S);
+    bt.destroy();
+
     const g = this.make.graphics({ add: false });
 
-    g.fillStyle(C.border);
+    // Border: a darker, wilder green (unmown) instead of flat dirt, so it
+    // reads as untamed nature framing the tidy yard rather than dead space.
+    g.fillStyle(0x1e3a12);
     g.fillRect(0, 0, W, H);
     g.fillStyle(C.bg);
     g.fillRect(YARD_X * CELL, YARD_Y * CELL, YARD_COLS * CELL, YARD_ROWS * CELL);
@@ -318,9 +338,37 @@ class GameScene extends Phaser.Scene {
       }
     }
 
+    // Wild grass blades across the whole border margin — denser and
+    // taller than the yard's own accent blades, to read as unmown.
+    const yardL = YARD_X * CELL, yardT = YARD_Y * CELL;
+    const yardR = (YARD_X + YARD_COLS) * CELL, yardB = (YARD_Y + YARD_ROWS) * CELL;
+    for (let y = 4; y < H; y += 7) {
+      for (let x = 4; x < W; x += 7) {
+        if (x > yardL && x < yardR && y > yardT && y < yardB) continue;
+        if (Math.random() > 0.55) continue;
+        const bh    = 5 + Math.floor(Math.random() * 8);
+        const alpha = 0.4 + Math.random() * 0.3;
+        g.fillStyle(0x0f2408, alpha);
+        g.fillRect(x + Phaser.Math.Between(-2, 2), y - bh, 1, bh);
+      }
+    }
+
     const rt = this.add.renderTexture(0, 0, W, H);
     rt.setOrigin(0, 0);
     rt.draw(g, 0, 0);
+
+    // Scattered taller background trees around the border, purely
+    // cosmetic (no collision — the border is already unreachable).
+    const margin = 20;
+    for (let x = margin; x < W - margin; x += 66)
+      rt.stamp('bg_tree', null, x + Phaser.Math.Between(-12, 12), margin);
+    for (let x = margin; x < W - margin; x += 66)
+      rt.stamp('bg_tree', null, x + Phaser.Math.Between(-12, 12), H - margin);
+    for (let y = yardT + margin; y < yardB - margin; y += 66)
+      rt.stamp('bg_tree', null, margin, y + Phaser.Math.Between(-12, 12));
+    for (let y = yardT + margin; y < yardB - margin; y += 66)
+      rt.stamp('bg_tree', null, W - margin, y + Phaser.Math.Between(-12, 12));
+
     rt.render();
     g.destroy();
   }
