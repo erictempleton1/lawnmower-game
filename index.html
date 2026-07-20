@@ -162,6 +162,49 @@
       #level-nav { gap: 6px; }
     }
 
+    /* Easy Mode toggle — top-right corner of the canvas overlay, mirroring
+       #level-nav's top-left placement. An accessibility toggle (see
+       setEasyMode() in game.js), not a difficulty setting: it lets the
+       mower roll over obstacles instead of getting stopped by them, added
+       for a younger player who kept getting stuck maneuvering around
+       edges. Lives in the canvas-scaled #ui-canvas (like #level-nav)
+       rather than the D-pad's reserved control-spacer zone, since it's a
+       settings toggle rather than a movement control and this way it
+       needs no per-orientation positioning of its own. */
+    #easy-toggle {
+      right: 8px; top: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 6px;
+      height: 16px;
+      background: rgba(255, 255, 255, 0.15);
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      border-radius: 8px;
+      color: #fff;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      pointer-events: auto;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #easy-toggle.active {
+      background: rgba(120, 220, 120, 0.55);
+      border-color: rgba(170, 255, 170, 0.9);
+    }
+    @media (hover: none) and (pointer: coarse) {
+      #easy-toggle {
+        height: 24px;
+        font-size: 12px;
+        padding: 0 10px;
+        border-radius: 12px;
+      }
+    }
+
     /* ── Win overlay ─────────────────────────────────────────────────────── */
     #win-overlay {
       display: none;
@@ -473,6 +516,7 @@
         <span id="hud-level">L1</span>
         <button id="level-next" class="level-nav-btn" aria-label="Next level">&#8250;</button>
       </div>
+      <button id="easy-toggle" class="ui-text" aria-label="Toggle Easy Mode (mower passes through obstacles)">EASY</button>
     </div>
   </div>
 

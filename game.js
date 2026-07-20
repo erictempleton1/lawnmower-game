@@ -89,6 +89,33 @@ let g_introShown = false;
 // deletes a level's entry so it starts fresh again.
 let g_levelState = {};
 
+// Easy Mode: an accessibility toggle (see #easy-toggle in index.html and
+// isObstacle() below), not a difficulty/tuning knob like the removed lever
+// panel (see "No Toggle-able Settings") — added because a younger player
+// kept getting physically stuck maneuvering around obstacle edges. It only
+// disables the STATIC obstacle collision (garden/bush/pond/boulder/cactus
+// edges via isNearGarden(), and tree trunks) so the mower can roll straight
+// over anything instead of snagging on it; it does not touch mowAt()'s own
+// obstacleGrid check, so gardens/bushes/cacti still only auto-mow once
+// their perimeter is cleared, ponds/boulders are still never mowed, and
+// totalCells/WIN_PCT math is completely unaffected — same 100%, just easier
+// to reach. Squirrel/dog cell-blocking is intentionally left on regardless:
+// they're temporary, not something a player can get stuck on.
+//
+// Global rather than per-level (this is about the player, not the level)
+// and persisted to localStorage so a parent doesn't have to re-enable it
+// for their kid every time the page reloads; wrapped in try/catch since
+// localStorage can throw in some private-browsing contexts, in which case
+// the toggle still works, it just won't remember across reloads.
+let g_easyMode = false;
+try { g_easyMode = localStorage.getItem('mower_easyMode') === '1'; } catch {}
+
+function setEasyMode(on) {
+  g_easyMode = on;
+  try { localStorage.setItem('mower_easyMode', on ? '1' : '0'); } catch {}
+  document.getElementById('easy-toggle')?.classList.toggle('active', on);
+}
+
 // ─── Audio ────────────────────────────────────────────────────────────────────
 // Procedurally synthesized (no audio files to vendor) via the raw Web
 // Audio API rather than Phaser's sound manager, which is asset-based.
@@ -1356,10 +1383,17 @@ class GameScene extends Phaser.Scene {
     const gc = Math.floor((px - YARD_X * CELL) / CELL);
     const gr = Math.floor((py - YARD_Y * CELL) / CELL);
     if (gc < 0 || gc >= YARD_COLS || gr < 0 || gr >= YARD_ROWS) return false;
-    if (this.isNearGarden(px, py)) return true;
-    for (const { wx, wy } of this.trunkPositions) {
-      const ddx = px - wx, ddy = py - wy;
-      if (ddx * ddx + ddy * ddy < 36) return true; // 6px radius around trunk
+    // Easy Mode skips just the static obstacle collision (garden/bush/pond/
+    // boulder/cactus edges, tree trunks) — the actual "getting stuck on
+    // things" it's meant to fix. Squirrel/dog cell-blocking below still
+    // applies either way; they move on their own, so they're not a source
+    // of the same stuck-in-place frustration.
+    if (!g_easyMode) {
+      if (this.isNearGarden(px, py)) return true;
+      for (const { wx, wy } of this.trunkPositions) {
+        const ddx = px - wx, ddy = py - wy;
+        if (ddx * ddx + ddy * ddy < 36) return true; // 6px radius around trunk
+      }
     }
     if (this.squirrel.active) {
       const sqc = Math.floor((this.squirrel.x - YARD_X * CELL) / CELL);
@@ -1510,6 +1544,13 @@ class GameScene extends Phaser.Scene {
 
     this.levelResetEl = document.getElementById('level-reset');
     this.levelResetEl.onclick = () => this.resetLevel();
+
+    // Easy Mode toggle — global (not per-level) state, so this just syncs
+    // the button's visual "on" state to g_easyMode on every level load
+    // rather than resetting anything.
+    this.easyToggleEl = document.getElementById('easy-toggle');
+    this.easyToggleEl.classList.toggle('active', g_easyMode);
+    this.easyToggleEl.onclick = () => setEasyMode(!g_easyMode);
   }
 
   // Snapshots the current level's mowing progress into the module-level
