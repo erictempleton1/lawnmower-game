@@ -3,6 +3,10 @@
   "theme": "mountain",
   "mowPattern": "hstripe",
   "mowContrast": 0.9,
+  "fillBands": [
+    ["..RR......TT......", "..........TT......"],
+    ["....GG.......R....", "....GG............"]
+  ],
   "map": [
     "..................",
     "RR..TT..GG..RR..TT",

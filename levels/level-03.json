@@ -2,6 +2,10 @@
   "name": "Level 3",
   "mowPattern": "rings",
   "mowContrast": 0.9,
+  "fillBands": [
+    ["......TT....BBB...", "......TT.........."],
+    ["..GG........TT....", "..GG........TT...."]
+  ],
   "map": [
     "..................",
     ".GG..TT..BBB..GG..",

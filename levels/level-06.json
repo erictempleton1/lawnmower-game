@@ -3,6 +3,10 @@
   "theme": "desert",
   "mowPattern": "bigchecker",
   "mowContrast": 0.9,
+  "fillBands": [
+    ["..C.....RR......C.", "..C.............C."],
+    ["......C....GG.....", "......C....GG....."]
+  ],
   "map": [
     "..................",
     ".C...RR...C...GG..",

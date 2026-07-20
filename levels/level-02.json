@@ -2,6 +2,10 @@
   "name": "Level 2",
   "mowPattern": "stripe",
   "mowContrast": 0.9,
+  "fillBands": [
+    ["...BBB.......TT...", ".............TT..."],
+    ["..TT.....GG.......", "..TT.....GG......."]
+  ],
   "map": [
     "..................",
     "..TT..BBB..GG..TT.",

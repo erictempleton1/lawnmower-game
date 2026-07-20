@@ -2,6 +2,10 @@
   "name": "Level 1",
   "mowPattern": "checker",
   "mowContrast": 0.9,
+  "fillBands": [
+    ["..TT.....BBB......", "..TT.............."],
+    [".....GG.......TT..", ".....GG.......TT.."]
+  ],
   "map": [
     "..................",
     "..BBB..TT..GG..BBB",

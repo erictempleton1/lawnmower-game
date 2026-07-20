@@ -228,25 +228,55 @@ function playSplash() {
   osc.stop(t + 0.17);
 }
 
-// Pads an authored level map out to YARD_ROWS×YARD_COLS with plain grass,
-// centering the original layout. A no-op once a map is already the right
-// size, so it's safe to call again on scene.restart (which reuses the same
-// already-normalized level objects).
-function normalizeMap(map) {
+// Pads an authored level map out to YARD_ROWS×YARD_COLS. A no-op once a
+// map is already the right size (landscape/desktop, where YARD_ROWS equals
+// the authored height), so it's safe to call again on scene.restart.
+//
+// On tall portrait grids, simply centering the authored 8 rows left every
+// obstacle clumped mid-screen with big bare bands above and below — the
+// reported "everything's in the middle" issue. So the vertical padding is
+// instead filled with the level's optional fillBands (authored in that
+// level's JSON: an array of 2-row band patterns, theme-matched), stamped
+// outward from the authored map's top and bottom edges in a fixed
+// [2-row gap][2-row band] rhythm, cycling through the list — the bottom
+// side starts one band later so the two sides don't mirror each other.
+// Any sub-4-row remainder stays plain grass at the outer edges. The
+// rhythm keeps the ≥2-cell separation convention automatically: fill
+// band to fill band is exactly 2 rows, and fill band to the authored
+// map's own bands at least 3 (its open edge row plus the 2-row gap).
+// Levels without fillBands (or grids too short to fit one) just center
+// like before.
+function normalizeMap(map, fillBands) {
   if (map.length === YARD_ROWS && map[0].length === YARD_COLS) return map;
-  const baseRows = map.length, baseCols = map[0].length;
-  const padTop  = Math.floor((YARD_ROWS - baseRows) / 2);
-  const padLeft = Math.floor((YARD_COLS - baseCols) / 2);
-  const out = [];
-  for (let r = 0; r < YARD_ROWS; r++) {
-    let row = '';
-    for (let c = 0; c < YARD_COLS; c++) {
-      const sr = r - padTop, sc = c - padLeft;
-      row += (sr >= 0 && sr < baseRows && sc >= 0 && sc < baseCols) ? map[sr][sc] : '.';
+  const baseCols = map[0].length;
+  const padLeft  = Math.floor((YARD_COLS - baseCols) / 2);
+  const grass    = '.'.repeat(YARD_COLS);
+  const padRow   = row => ('.'.repeat(padLeft) + row + grass).slice(0, YARD_COLS);
+
+  const extra     = Math.max(0, YARD_ROWS - map.length);
+  const padTop    = Math.floor(extra / 2);
+  const padBottom = extra - padTop;
+
+  // Builds `pad` fill rows ordered nearest-to-the-authored-map first.
+  // For the top section that's bottom-up (caller reverses it), so band
+  // rows are pushed flipped there to come out upright after the reverse.
+  const buildFill = (pad, startIdx, flip) => {
+    const rows = [];
+    let bandIdx = startIdx, remaining = pad;
+    while (remaining >= 4 && fillBands && fillBands.length > 0) {
+      const band = fillBands[bandIdx % fillBands.length];
+      rows.push(grass, grass);
+      rows.push(padRow(flip ? band[1] : band[0]), padRow(flip ? band[0] : band[1]));
+      bandIdx++;
+      remaining -= 4;
     }
-    out.push(row);
-  }
-  return out;
+    while (remaining-- > 0) rows.push(grass);
+    return rows;
+  };
+
+  const top    = buildFill(padTop, 0, true).reverse();
+  const bottom = buildFill(padBottom, 1, false);
+  return [...top, ...map.map(padRow), ...bottom];
 }
 
 // ─── Boot scene ───────────────────────────────────────────────────────────────
@@ -274,7 +304,7 @@ class GameScene extends Phaser.Scene {
   constructor() { super('Game'); }
 
   init(data) {
-    this.allLevels    = (data?.levels ?? []).map(lvl => ({ ...lvl, map: normalizeMap(lvl.map) }));
+    this.allLevels    = (data?.levels ?? []).map(lvl => ({ ...lvl, map: normalizeMap(lvl.map, lvl.fillBands) }));
     this.currentLevel = data?.level  ?? 0;
   }
 
