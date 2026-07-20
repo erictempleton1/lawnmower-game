@@ -29,14 +29,18 @@
       min-height: 0;
       position: relative;
     }
-    /* Reserves space below the canvas for the D-pad. Empty by default
-       (desktop and mobile landscape already use the full window well, so
-       #game-container's flex:1 claims everything and this stays at 0).
-       Only mobile portrait needs it: the yard grid is sized (in game.js) so
+    /* Reserves space for the D-pad: below the canvas in mobile portrait,
+       beside it in mobile landscape (media queries further down). Empty by
+       default (desktop's mouse/trackpad input never shows the D-pad at
+       all, so #game-container's flex:1 claims the full window and this
+       stays at 0). Mobile portrait's yard grid is sized (in game.js) so
        its aspect ratio nearly fills the screen, with #game-container
        pinned to exactly that rendered height via an aspect-ratio set by
        game.js's applyResponsiveLayout() — this spacer becomes a real,
-       ~1-inch control zone with everything left over. */
+       ~1-inch control zone with everything left over. Mobile landscape
+       instead reserves a fixed-width side strip (below) — its own aspect
+       ratio doesn't grow to fill the screen the way portrait's does, so a
+       simple fixed reserve is enough. */
     #controls-spacer {
       flex: 0 0 0px;
       position: relative;
@@ -52,6 +56,31 @@
            bar / Safari's collapsed-toolbar strip, on top of CONTROL_RESERVE_PX
            already reserving room in game.js. */
         padding-bottom: max(12px, env(safe-area-inset-bottom));
+      }
+    }
+    /* Mobile landscape touch: same idea as portrait above, rotated 90°.
+       #dpad/#hud-pct-bottom/#level-reset used to float at fixed viewport
+       corners over the canvas's assumed left/right "dead zone" margin —
+       but that margin only exists when the container is much wider than
+       the game's 4:3 aspect ratio. On real phones in landscape (and even
+       more so on ~4:3 tablets) the canvas nearly fills the viewport width,
+       so the fixed-position D-pad ended up sitting on top of the mowable
+       yard instead of beside it (reported directly: "controls overlaying
+       the mowing area, mowing area off screen"). Reserving a real strip —
+       #game-container and #controls-spacer side by side instead of
+       stacked — guarantees they never overlap, the same guarantee
+       portrait already had.  */
+    @media (hover: none) and (pointer: coarse) and (orientation: landscape) {
+      body { flex-direction: row; }
+      #game-container  { min-width: 0; }
+      #controls-spacer {
+        flex: 0 0 190px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;      /* center the D-pad horizontally in the strip */
+        justify-content: center;  /* and vertically down its full height */
+        padding: max(10px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+                 max(10px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
       }
     }
 
@@ -223,8 +252,10 @@
     /* ── Mobile D-pad: touch-only, hidden for mouse/desktop ─────────────── */
     #dpad {
       display: none;
-      /* Default (mobile landscape): fixed over the canvas's left/right dead
-         zone, same as before. */
+      /* Base values are unused in practice — every touch device (both
+         orientations, below) turns this into a normal flex child of the
+         reserved #controls-spacer zone instead. Kept as a harmless
+         fallback in case some touch device matches neither media query. */
       position: fixed;
       left: 18px;
       bottom: 18px;
@@ -236,10 +267,11 @@
     @media (hover: none) and (pointer: coarse) {
       #dpad { display: block; }
     }
-    @media (hover: none) and (pointer: coarse) and (orientation: portrait) {
-      /* Portrait: a flex child of #controls-spacer (centered in the
-         ~1-inch leftover space) instead of fixed to the screen edge, and
-         sized down a notch to fit comfortably within it. */
+    @media (hover: none) and (pointer: coarse) {
+      /* Both orientations lay the D-pad out as a normal flex child of the
+         reserved #controls-spacer zone (centered in it) instead of
+         floating fixed over the canvas, sized down a notch to fit
+         comfortably within that zone's ~190px reserve. */
       #dpad {
         position: relative;
         left: auto; top: auto; bottom: auto;
@@ -282,6 +314,20 @@
         font-size: 20px;
       }
     }
+    @media (hover: none) and (pointer: coarse) and (orientation: landscape) {
+      /* Landscape's control strip runs top-to-bottom instead of side-to-
+         side, so this pins to the top edge (portrait's right-edge pinning,
+         rotated 90°) with the D-pad centered below it. */
+      #hud-pct-bottom {
+        position: absolute;
+        top: 20px;
+        bottom: auto;
+        right: auto;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 20px;
+      }
+    }
     /* Reset-level button. Default (desktop/landscape): fixed bottom-center,
        same float-free-of-#controls-spacer technique as #dpad/#hud-pct-bottom
        (which sit at the opposite corners from each other in that mode).
@@ -318,6 +364,20 @@
         bottom: auto;
         top: 50%;
         transform: translateY(-50%);
+        width: 46px;
+        height: 46px;
+        font-size: 24px;
+      }
+    }
+    @media (hover: none) and (pointer: coarse) and (orientation: landscape) {
+      /* Mirrors #hud-pct-bottom's top-edge pinning above, at the strip's
+         bottom edge instead — D-pad centers between the two. */
+      #level-reset {
+        position: absolute;
+        left: 50%;
+        bottom: 20px;
+        top: auto;
+        transform: translateX(-50%);
         width: 46px;
         height: 46px;
         font-size: 24px;
