@@ -1661,10 +1661,40 @@ class GameScene extends Phaser.Scene {
     this.scene.restart({ levels: this.allLevels, level: next });
   }
 
+  // Whether every level (not just this one) has actually been won — used
+  // by showWin() to decide "All levels complete!" vs "Up next". Checking
+  // this.currentLevel's position instead (as it used to) meant jumping
+  // straight to the last level via the nav arrows and winning it claimed
+  // every level was done, even with levels 1-N-1 untouched. g_levelState
+  // only gets this level's own win saved on the way OUT (see
+  // saveLevelState(), called by goToLevel()/advanceLevel() right before
+  // scene.restart()) — showWin() itself only ever fires with this.won
+  // already true, so the current level counts as done without needing a
+  // saved entry yet.
+  allLevelsComplete() {
+    for (let i = 0; i < this.allLevels.length; i++) {
+      if (i === this.currentLevel) continue;
+      if (!g_levelState[i]?.won) return false;
+    }
+    return true;
+  }
+
   showWin() {
-    const isLast = this.currentLevel >= this.allLevels.length - 1;
-    this.winNextEl.textContent   = isLast ? 'All levels complete!' : `Up next: ${this.allLevels[this.currentLevel + 1].name}`;
-    this.winActionEl.textContent = isLast ? 'Tap or press R to restart from L1' : 'Tap or press R for next level';
+    const allDone = this.allLevelsComplete();
+    if (allDone) {
+      this.winNextEl.textContent   = 'All levels complete!';
+      this.winActionEl.textContent = 'Tap or press R to restart from L1';
+    } else {
+      // Whichever level advanceLevel() will actually go to next (same
+      // wraparound math) — naturally reads as "Up next: Level 1" instead
+      // of a false "All levels complete!" when the player jumped straight
+      // to the last level and won it first, with earlier levels still
+      // unmowed, and correctly flips to the "all done" message above if
+      // this happens to be the last level left regardless of play order.
+      const nextIndex = (this.currentLevel + 1) % this.allLevels.length;
+      this.winNextEl.textContent   = `Up next: ${this.allLevels[nextIndex].name}`;
+      this.winActionEl.textContent = 'Tap or press R for next level';
+    }
     this.winEl.classList.add('visible');
     playWinChime();
   }
