@@ -349,6 +349,7 @@ class GameScene extends Phaser.Scene {
     this.deer           = { active: false };
     this.fox            = { active: false };
     this.goat           = { active: false };
+    this.cow            = { active: false };
     this.tumbleweed     = { active: false };
     // Gated on the intro modal for the very first level only — see
     // buildIntroOverlay(). Already-dismissed (g_introShown) on every
@@ -464,6 +465,8 @@ class GameScene extends Phaser.Scene {
     this.foxGfx.setDepth(4);
     this.goatGfx = this.add.graphics();
     this.goatGfx.setDepth(4);
+    this.cowGfx = this.add.graphics();
+    this.cowGfx.setDepth(4);
     this.tumbleweedGfx = this.add.graphics();
     this.tumbleweedGfx.setDepth(4);
     this.dogGfx = this.add.graphics();
@@ -548,6 +551,9 @@ class GameScene extends Phaser.Scene {
   //   bands, 'stripe' turned 90°: passes running across the valley floor.
   // - 'bigchecker' (level-06.json): alternates by (⌊gc/2⌋ + ⌊gr/2⌋) parity
   //   — a checkerboard of 2×2 blocks, coarser and calmer than 'checker'.
+  // - 'lattice' (level-07.json): alternates whenever column or row is a
+  //   multiple of 4 — a thin crossing grid every 4 cells, reading as a
+  //   quilted/fenced-field lattice rather than solid bands or blocks.
   // Any other/missing value renders a flat, uniform mow (unchanged from
   // before mow patterns existed).
   mowedTextureKey(h, gc, gr) {
@@ -567,6 +573,8 @@ class GameScene extends Phaser.Scene {
       alt = gr % 2 === 1;
     } else if (this.levelData.mowPattern === 'bigchecker') {
       alt = (Math.floor(gc / 2) + Math.floor(gr / 2)) % 2 === 1;
+    } else if (this.levelData.mowPattern === 'lattice') {
+      alt = gc % 4 === 0 || gr % 4 === 0;
     }
     return `mowed_${h}_full${alt ? '_alt' : ''}`;
   }
@@ -643,7 +651,7 @@ class GameScene extends Phaser.Scene {
     tb.destroy();
 
     // Boulder — 16×16, per-cell like bushes ('R' in level maps, introduced
-    // with Level 5's mountain valley). Permanent rock: blocks like a
+    // with level-05.json's mountain valley). Permanent rock: blocks like a
     // garden/pond cell but never auto-mows (its cells are excluded from
     // totalCells, same treatment as pond water). Rounded gray rock with a
     // lit top-left face, a hairline crack, and grass tufts at the base so
@@ -668,7 +676,7 @@ class GameScene extends Phaser.Scene {
     rb.destroy();
 
     // Cactus — 16×16, per-cell like bushes ('C' in level maps, introduced
-    // with Level 6's desert). Shares the garden/bush cluster path in
+    // with level-06.json's desert). Shares the garden/bush cluster path in
     // buildObstacleLayer(), so the grass underneath auto-mows once the
     // player's mowed all the way around it — you just can't mow through a
     // cactus. Brighter than the border's muted bg_saguaro since it's an
@@ -693,6 +701,28 @@ class GameScene extends Phaser.Scene {
     cc.fillRect(13, 6, 1, 1);
     cc.generateTexture('cactus', CELL, CELL);
     cc.destroy();
+
+    // Corn — 16×16, per-cell like the cactus ('N' in level maps, introduced
+    // with level-07.json's farm). Shares the same garden/bush/cactus
+    // cluster path — the grass under a corn patch auto-mows once its
+    // perimeter is cleared, reading as "harvesting" the field around it.
+    const cn = this.make.graphics({ add: false });
+    cn.fillStyle(0x000000, 0.15);
+    cn.fillEllipse(8, 14, 11, 3);            // ground shadow
+    cn.fillStyle(0x3a7a28);
+    cn.fillRect(6, 4, 2, 10);                // left stalk
+    cn.fillRect(9, 2, 2, 12);                // right (taller) stalk
+    cn.fillStyle(0x4d9a38);
+    cn.fillTriangle(4, 7, 7, 5, 6, 9);        // left leaf
+    cn.fillTriangle(12, 5, 9, 4, 10, 8);      // right leaf
+    cn.fillStyle(0xe8c840);
+    cn.fillRect(9, 6, 3, 6);                 // corn cob
+    cn.fillStyle(0xf5dc70, 0.8);
+    cn.fillRect(9, 6, 1, 6);                 // cob highlight
+    cn.fillStyle(0x6a8a2a);
+    cn.fillRect(8, 5, 5, 2);                 // husk top
+    cn.generateTexture('corn', CELL, CELL);
+    cn.destroy();
 
     // Garden bed — 32×32 pixel art
     const gg = this.make.graphics({ add: false });
@@ -809,15 +839,17 @@ class GameScene extends Phaser.Scene {
   buildBackground() {
     // Border decor is themed per level: the default forest edge
     // (bg_tree/bg_pine rows), mountain peaks/foothills for
-    // "theme": "mountain" (level-05.json's alpine valley), or buttes and
-    // saguaros for "theme": "desert" (level-06.json). The wild-grass base,
+    // "theme": "mountain" (level-05.json's alpine valley), buttes and
+    // saguaros for "theme": "desert" (level-06.json), or a barn/hay bales/
+    // fence for "theme": "farm" (level-07.json). The wild-grass base,
     // accent blades, and wildflowers are shared by forest/mountain (they
-    // read as alpine meadow just as well as forest floor); desert swaps
-    // them for sand, dry scrub, and sparse desert blooms — the yard itself
-    // stays green regardless, an irrigated lawn holding out against the
-    // landscape around it.
+    // read as alpine meadow just as well as forest floor); desert and farm
+    // each swap them for their own palette — the yard itself stays green
+    // regardless, an irrigated lawn holding out against the landscape
+    // around it.
     const isMountain = this.levelData.theme === 'mountain';
     const isDesert   = this.levelData.theme === 'desert';
+    const isFarm     = this.levelData.theme === 'farm';
 
     // Self-contained (not in buildLevelTextures()) since this runs before
     // that does — the unmowable border gets its own bigger, more muted
@@ -951,13 +983,71 @@ class GameScene extends Phaser.Scene {
       bpp.destroy();
     }
 
+    // Farm-theme border textures: a red barn (the big far landmark,
+    // mirroring the mountain/desert themes' peaks/buttes), a round hay
+    // bale (the mid-row stagger, like foothills/saguaros), and a wooden
+    // fence rail (the near-yard row, like the pine treeline/prickly pear —
+    // a fence is exactly what borders a real farm field). Same
+    // muted-scenery philosophy throughout.
+    if (isFarm) {
+      const BN_W = 54, BN_H = 50;
+      const bn = this.make.graphics({ add: false });
+      bn.fillStyle(0x000000, 0.2);
+      bn.fillEllipse(BN_W / 2, BN_H - 4, BN_W * 0.8, 6);
+      // Gambrel roof: dark red-brown, two-slope silhouette
+      bn.fillStyle(0x5a2a20);
+      bn.fillTriangle(BN_W / 2, 4, 6, 20, BN_W - 6, 20);
+      bn.fillStyle(0x6e352a);
+      bn.fillTriangle(BN_W / 2, 4, BN_W / 2 + 4, 12, BN_W - 6, 20);
+      // Body: barn red, with a lighter lit face on the left half
+      bn.fillStyle(0x8a2e20);
+      bn.fillRect(6, 18, BN_W - 12, BN_H - 22);
+      bn.fillStyle(0x9e3a28);
+      bn.fillRect(6, 18, (BN_W - 12) / 2, BN_H - 22);
+      // White loft-door trim (small square with an X)
+      bn.fillStyle(0xe8e0d0);
+      bn.fillRect(BN_W / 2 - 5, 24, 10, 10);
+      bn.lineStyle(1, 0x8a2e20, 0.9);
+      bn.lineBetween(BN_W / 2 - 5, 24, BN_W / 2 + 5, 34);
+      bn.lineBetween(BN_W / 2 + 5, 24, BN_W / 2 - 5, 34);
+      bn.generateTexture('bg_barn', BN_W, BN_H);
+      bn.destroy();
+
+      const HB_W = 34, HB_H = 26;
+      const hb = this.make.graphics({ add: false });
+      hb.fillStyle(0x000000, 0.18);
+      hb.fillEllipse(HB_W / 2, HB_H - 3, HB_W * 0.8, 5);
+      hb.fillStyle(0xa4832e);
+      hb.fillEllipse(HB_W / 2, HB_H / 2 + 1, HB_W - 6, HB_H - 6);
+      hb.fillStyle(0xb99640, 0.8); // lit highlight
+      hb.fillEllipse(HB_W / 2 - 4, HB_H / 2 - 3, HB_W * 0.4, HB_H * 0.35);
+      hb.lineStyle(1, 0x7a5f20, 0.7); // baling-twine wraps
+      hb.strokeEllipse(HB_W / 2, HB_H / 2 + 1, HB_W - 12, HB_H - 10);
+      hb.lineBetween(HB_W / 2, 4, HB_W / 2, HB_H - 4);
+      hb.generateTexture('bg_haybale', HB_W, HB_H);
+      hb.destroy();
+
+      const FN_W = 40, FN_H = 22;
+      const fn = this.make.graphics({ add: false });
+      fn.fillStyle(0x000000, 0.15);
+      fn.fillEllipse(FN_W / 2, FN_H - 2, FN_W * 0.85, 3);
+      fn.fillStyle(0x6b4a2a);
+      fn.fillRect(2, 6, 5, FN_H - 8);          // left post
+      fn.fillRect(FN_W - 7, 6, 5, FN_H - 8);   // right post
+      fn.fillStyle(0x7d5a35);
+      fn.fillRect(2, 8, FN_W - 4, 4);          // top rail
+      fn.fillRect(2, 15, FN_W - 4, 4);         // bottom rail
+      fn.generateTexture('bg_fence', FN_W, FN_H);
+      fn.destroy();
+    }
+
     const g = this.make.graphics({ add: false });
 
     // Border: a darker, wilder green (unmown) instead of flat dirt, so it
     // reads as untamed nature framing the tidy yard rather than dead
-    // space — or muted sand on desert levels, same keep-it-darker-than-
-    // the-yard principle so the lawn still pops.
-    g.fillStyle(isDesert ? 0x6e5a32 : 0x1e3a12);
+    // space — or muted sand/dirt on desert/farm levels, same keep-it-
+    // darker-than-the-yard principle so the lawn still pops.
+    g.fillStyle(isDesert ? 0x6e5a32 : isFarm ? 0x5a4a26 : 0x1e3a12);
     g.fillRect(0, 0, W, H);
     g.fillStyle(C.bg);
     g.fillRect(YARD_X * CELL, YARD_Y * CELL, YARD_COLS * CELL, YARD_ROWS * CELL);
@@ -1004,15 +1094,21 @@ class GameScene extends Phaser.Scene {
     // swaps both: sparser, shorter dry-scrub tufts in sun-bleached tan,
     // and a smaller, sun-washed bloom palette (globemallow coral, brittle-
     // bush yellow, white) at a lower rate — sparse is the desert look.
+    // Farm swaps them for dry golden hay-field tufts and a classic
+    // pasture-flower palette (poppy red, daisy white, black-eyed-susan
+    // yellow) at the same rate as forest — a farm border reads as an
+    // unmown hayfield, not sparse like desert scrub.
     const yardL = YARD_X * CELL, yardT = YARD_Y * CELL;
     const yardR = (YARD_X + YARD_COLS) * CELL, yardB = (YARD_Y + YARD_ROWS) * CELL;
     const wildflowerColors = isDesert
       ? [0xf0d060, 0xe08050, 0xffffff]
+      : isFarm
+      ? [0xdd3333, 0xffffff, 0xffdd33]
       : [0xff5555, 0xffdd44, 0xcc55ff, 0xff8844, 0x55ccff, 0xffffff];
-    const bladeColor  = isDesert ? 0x453a1c : 0x0f2408;
+    const bladeColor  = isDesert ? 0x453a1c : isFarm ? 0x6b5518 : 0x0f2408;
     const bladeChance = isDesert ? 0.4 : 0.55;
     const bloomChance = isDesert ? 0.05 : 0.1;
-    const stemColor   = isDesert ? 0x5a4c26 : 0x2a5a1a;
+    const stemColor   = isDesert ? 0x5a4c26 : isFarm ? 0x4a3a18 : 0x2a5a1a;
     for (let y = 4; y < H; y += 7) {
       for (let x = 4; x < W; x += 7) {
         if (x > yardL && x < yardR && y > yardT && y < yardB) continue;
@@ -1053,7 +1149,7 @@ class GameScene extends Phaser.Scene {
     // or any residual overlap.
     const margin = 20;
     const bgTrees = [];
-    if (!isMountain && !isDesert) {
+    if (!isMountain && !isDesert && !isFarm) {
     for (let x = margin; x < W - margin; x += 66)
       bgTrees.push({ key: 'bg_tree', x: x + Phaser.Math.Between(-4, 4), y: margin });
     for (let x = margin; x < W - margin; x += 66)
@@ -1133,7 +1229,7 @@ class GameScene extends Phaser.Scene {
       for (let x = margin + 10; x < W - margin; x += 120)
         bgTrees.push({ key: 'bg_pine', x: x + Phaser.Math.Between(-6, 6), y: innerHillYB + Phaser.Math.Between(-2, 2) });
     }
-    } else {
+    } else if (isDesert) {
     // Desert border: flat-top buttes as the big far landform on the outer
     // rim (the mountain theme's peaks), tall saguaros staggered between
     // and tucked inward (its foothills), and prickly pear clusters nearest
@@ -1168,6 +1264,42 @@ class GameScene extends Phaser.Scene {
       for (let x = margin + 48; x < W - margin; x += 128)
         bgTrees.push({ key: 'bg_saguaro', x: x + Phaser.Math.Between(-6, 6), y: innerPadYB - 8 + Phaser.Math.Between(-2, 2) });
     }
+    } else {
+    // Farm border: red barns as the big far landmark on the outer rim
+    // (the other themes' peaks/buttes), hay bales staggered between and
+    // tucked inward (their foothills/saguaros), and a wooden fence rail
+    // nearest the yard (their treeline/prickly pear) — a fence is exactly
+    // what borders a real farm field. Same layering, same shared y-sort.
+    for (let x = margin; x < W - margin; x += 62)
+      bgTrees.push({ key: 'bg_barn', x: x + Phaser.Math.Between(-4, 4), y: margin - 2 });
+    for (let x = margin; x < W - margin; x += 62)
+      bgTrees.push({ key: 'bg_barn', x: x + Phaser.Math.Between(-4, 4), y: H - margin + 2 });
+    for (let y = yardT + margin; y < yardB - margin; y += 62)
+      bgTrees.push({ key: 'bg_barn', x: margin - 2, y: y + Phaser.Math.Between(-4, 4) });
+    for (let y = yardT + margin; y < yardB - margin; y += 62)
+      bgTrees.push({ key: 'bg_barn', x: W - margin + 2, y: y + Phaser.Math.Between(-4, 4) });
+    // Hay bales staggered between the barns, tucked toward the yard
+    for (let x = margin + 31; x < W - margin; x += 62)
+      bgTrees.push({ key: 'bg_haybale', x: x + Phaser.Math.Between(-3, 3), y: margin + 14 });
+    for (let x = margin + 31; x < W - margin; x += 62)
+      bgTrees.push({ key: 'bg_haybale', x: x + Phaser.Math.Between(-3, 3), y: H - margin - 14 });
+    for (let y = yardT + margin + 31; y < yardB - margin; y += 62)
+      bgTrees.push({ key: 'bg_haybale', x: margin + 7, y: y + Phaser.Math.Between(-3, 3) });
+    for (let y = yardT + margin + 31; y < yardB - margin; y += 62)
+      bgTrees.push({ key: 'bg_haybale', x: W - margin - 7, y: y + Phaser.Math.Between(-3, 3) });
+    // Inner top/bottom rows: fence rail segments nearest the yard, plus
+    // the occasional hay bale (same room-to-fit guard as the other themes)
+    const innerFenceY = yardT - 12, innerFenceYB = yardB + 12;
+    if (innerFenceY > margin + 20) {
+      for (let x = margin + 20; x < W - margin; x += 44)
+        bgTrees.push({ key: 'bg_fence', x: x + Phaser.Math.Between(-2, 2), y: innerFenceY + Phaser.Math.Between(-2, 2) });
+      for (let x = margin + 20; x < W - margin; x += 44)
+        bgTrees.push({ key: 'bg_fence', x: x + Phaser.Math.Between(-2, 2), y: innerFenceYB + Phaser.Math.Between(-2, 2) });
+      for (let x = margin + 42; x < W - margin; x += 124)
+        bgTrees.push({ key: 'bg_haybale', x: x + Phaser.Math.Between(-6, 6), y: innerFenceY - 6 + Phaser.Math.Between(-2, 2) });
+      for (let x = margin + 42; x < W - margin; x += 124)
+        bgTrees.push({ key: 'bg_haybale', x: x + Phaser.Math.Between(-6, 6), y: innerFenceYB - 6 + Phaser.Math.Between(-2, 2) });
+    }
     }
 
     bgTrees.sort((a, b) => a.y - b.y);
@@ -1195,14 +1327,14 @@ class GameScene extends Phaser.Scene {
     this.rockCellCount = 0;
     this.pondBounds = null;
 
-    // Gardens, bushes/hedges, ponds, boulders, and cacti: all cells
+    // Gardens, bushes/hedges, ponds, boulders, cacti, and corn: all cells
     // grid-blocked (isNearGarden()'s edge-collision check applies to any
     // obstacleGrid cell, not just gardens specifically). Trees: no grid
     // blocking — trunk uses pixel-radius collision so the mower can enter
     // and mow the cell but can't pass through the trunk post.
     for (let r = 0; r < YARD_ROWS; r++)
       for (let c = 0; c < YARD_COLS; c++)
-        if ('GBPRC'.includes(map[r][c])) this.obstacleGrid[r][c] = 1;
+        if ('GBPRCN'.includes(map[r][c])) this.obstacleGrid[r][c] = 1;
 
     this.trunkPositions = [];
 
@@ -1213,7 +1345,7 @@ class GameScene extends Phaser.Scene {
     for (let r = 0; r < YARD_ROWS; r++) {
       for (let c = 0; c < YARD_COLS; c++) {
         const type = map[r][c];
-        if (!'TGBPRC'.includes(type)) continue;
+        if (!'TGBPRCN'.includes(type)) continue;
 
         // Only process from the top-left corner of each contiguous cluster
         const aboveSame = r > 0 && map[r - 1][c] === type;
@@ -1225,11 +1357,13 @@ class GameScene extends Phaser.Scene {
         while (c + cw < YARD_COLS && map[r][c + cw] === type) cw++;
         while (r + cH < YARD_ROWS && map[r + cH] && map[r + cH][c] === type) cH++;
 
-        if (type === 'G' || type === 'B' || type === 'C') {
-          // Gardens, bushes/hedges, and cacti: auto-mow when all perimeter
-          // cells are mowed. Hidden under their own obstacle-layer texture
-          // anyway (depth 3, above the mowed layer's depth 1), so it's
-          // invisible until the whole cluster is cleared.
+        if (type === 'G' || type === 'B' || type === 'C' || type === 'N') {
+          // Gardens, bushes/hedges, cacti, and corn: auto-mow when all
+          // perimeter cells are mowed (a corn patch reads as "harvested"
+          // once the field around it is cleared). Hidden under their own
+          // obstacle-layer texture anyway (depth 3, above the mowed
+          // layer's depth 1), so it's invisible until the whole cluster
+          // is cleared.
           const cells = [];
           for (let dr = 0; dr < cH; dr++)
             for (let dc = 0; dc < cw; dc++)
@@ -1275,8 +1409,8 @@ class GameScene extends Phaser.Scene {
             : { minR, maxR, minC, maxC };
         }
 
-        if (type === 'B' || type === 'P' || type === 'R' || type === 'C') {
-          // Bushes, ponds, boulders, and cacti: one 16×16 texture per
+        if (type === 'B' || type === 'P' || type === 'R' || type === 'C' || type === 'N') {
+          // Bushes, ponds, boulders, cacti, and corn: one 16×16 texture per
           // single cell (not a 32×32 2-cell block like trees/gardens use)
           // — a hedge is often a single-cell-wide row, and the others
           // arbitrary rectangles, so none is guaranteed 2×2-aligned.
@@ -1284,7 +1418,7 @@ class GameScene extends Phaser.Scene {
             for (let dc = 0; dc < cw; dc++) {
               const bx = (YARD_X + c + dc) * CELL + CELL / 2;
               const by = (YARD_Y + r + dr) * CELL + CELL / 2;
-              let key = type === 'B' ? 'bush' : type === 'R' ? 'boulder' : type === 'C' ? 'cactus' : 'pond';
+              let key = type === 'B' ? 'bush' : type === 'R' ? 'boulder' : type === 'C' ? 'cactus' : type === 'N' ? 'corn' : 'pond';
               // A pond's 4 bounding-box corners use the notched variant
               // instead of the plain tile, so the overall shape reads as
               // rounded rather than a sharp rectangle (collision is still
@@ -2125,8 +2259,9 @@ class GameScene extends Phaser.Scene {
   // alongside) the deer and fox, since forest wildlife wandering out of a
   // rock face would break the scene; desert levels keep just the fox (a
   // kit fox reads fine in scrubland, a deer doesn't) and add the rolling
-  // tumbleweed. Birds/squirrel/dog are scheduled separately on every
-  // level regardless of theme.
+  // tumbleweed; farm levels get the cow instead, peeking from behind the
+  // barn/fence. Birds/squirrel/dog are scheduled separately on every level
+  // regardless of theme.
 
   schedulePeekers() {
     if (this.levelData.theme === 'mountain') {
@@ -2134,6 +2269,8 @@ class GameScene extends Phaser.Scene {
     } else if (this.levelData.theme === 'desert') {
       this.scheduleFox();
       this.scheduleTumbleweed();
+    } else if (this.levelData.theme === 'farm') {
+      this.scheduleCow();
     } else {
       this.scheduleDeer();
       this.scheduleFox();
@@ -2204,6 +2341,79 @@ class GameScene extends Phaser.Scene {
     g.fillStyle(0xb8b2a4);
     g.fillRect(headX - 1, y - 5, 4, 2);
     g.fillRect(headX, y - 3, 2, 2);
+  }
+
+  // ── Cow ───────────────────────────────────────────────────────────────────
+  // The farm theme's peeker — same peek/hold/retreat machine as the goat/
+  // deer/fox, popping out from behind the barn/fence on the left/right.
+  // Slower peek and the longest hold of any peeker — cows are unhurried,
+  // placid animals, which fits the game's gentle pace better than a quick
+  // pop like the goat's.
+
+  scheduleCow() {
+    if (this.won) return;
+    this.cowTimer = this.time.delayedCall(
+      Phaser.Math.Between(16000, 30000), this.launchCow, [], this);
+  }
+
+  launchCow() {
+    if (this.won) return;
+    const onLeft = Phaser.Math.Between(0, 1) === 0;
+    const y = Phaser.Math.Between(YARD_Y * CELL + 20, (YARD_Y + YARD_ROWS) * CELL - 20);
+    this.cow = { active: true, onLeft, y, phase: 'peek', elapsed: 0, t: 0 };
+  }
+
+  updateCow(dt) {
+    if (!this.cow.active) return;
+    const PEEK_MS = 1100, HOLD_MS = 2800, RETREAT_MS = 1100;
+    this.cow.elapsed += dt * 1000;
+    if (this.cow.phase === 'peek') {
+      this.cow.t = Math.min(1, this.cow.elapsed / PEEK_MS);
+      if (this.cow.elapsed >= PEEK_MS) { this.cow.phase = 'hold'; this.cow.elapsed = 0; }
+    } else if (this.cow.phase === 'hold') {
+      this.cow.t = 1;
+      if (this.cow.elapsed >= HOLD_MS) { this.cow.phase = 'retreat'; this.cow.elapsed = 0; }
+    } else {
+      this.cow.t = Math.max(0, 1 - this.cow.elapsed / RETREAT_MS);
+      if (this.cow.elapsed >= RETREAT_MS) {
+        this.cow.active = false;
+        this.cowGfx.clear();
+        this.scheduleCow();
+        return;
+      }
+    }
+    this.drawCow();
+  }
+
+  drawCow() {
+    const g = this.cowGfx;
+    g.clear();
+    const { onLeft, y, t } = this.cow;
+    const peekDepth = 20;
+    const baseX = onLeft ? -15 : W + 15;
+    const x     = onLeft ? baseX + peekDepth * t : baseX - peekDepth * t;
+    const headX = onLeft ? x + 7 : x - 7;
+
+    g.fillStyle(0x000000, 0.2);
+    g.fillEllipse(x, y + 10, 17, 4);
+    // White Holstein body with irregular black patches — the classic
+    // silhouette that reads as "cow" at a glance against the farm border
+    g.fillStyle(0xf0ece0);
+    g.fillRect(x - 7, y - 4, 14, 10);
+    g.fillStyle(0x2a2620);
+    g.fillRect(x - 6, y - 3, 5, 4);
+    g.fillRect(x + 1, y + 1, 5, 4);
+    // Head, same cream base
+    g.fillStyle(0xf0ece0);
+    g.fillRect(headX - 3, y - 9, 8, 7);
+    g.fillStyle(0x2a2620);
+    g.fillRect(headX - 2, y - 8, 3, 3); // patch on the head
+    // Pink muzzle + small ears
+    g.fillStyle(0xd89898);
+    g.fillRect(headX - 1, y - 3, 4, 2);
+    g.fillStyle(0xf0ece0);
+    g.fillRect(headX - 4, y - 9, 2, 2);
+    g.fillRect(headX + 3, y - 9, 2, 2);
   }
 
   // ── Tumbleweed ────────────────────────────────────────────────────────────
@@ -2290,7 +2500,7 @@ class GameScene extends Phaser.Scene {
   //    Two points both left of the pond's left edge (or both right of its
   //    right edge, etc.) can never have a straight line between them cross
   //    it — a stronger guarantee than testing the exact path, since a pond
-  //    spanning nearly the whole yard along one axis (see Level 4) can
+  //    spanning nearly the whole yard along one axis (see level-04.json) can
   //    leave zero routes across that a straight-line check would ever
   //    accept, forcing an exact-path test to eventually allow one anyway.
   //    This preference is applied FIRST and unconditionally kept whenever
@@ -2622,6 +2832,7 @@ class GameScene extends Phaser.Scene {
     this.updateDeer(dt);
     this.updateFox(dt);
     this.updateGoat(dt);
+    this.updateCow(dt);
     this.updateTumbleweed(dt);
     this.updateDog(dt);
     this.updateFrog(dt);
