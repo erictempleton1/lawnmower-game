@@ -1265,28 +1265,31 @@ class GameScene extends Phaser.Scene {
         bgTrees.push({ key: 'bg_saguaro', x: x + Phaser.Math.Between(-6, 6), y: innerPadYB - 8 + Phaser.Math.Between(-2, 2) });
     }
     } else {
-    // Farm border: red barns as the big far landmark on the outer rim
-    // (the other themes' peaks/buttes), hay bales staggered between and
-    // tucked inward (their foothills/saguaros), and a wooden fence rail
-    // nearest the yard (their treeline/prickly pear) — a fence is exactly
-    // what borders a real farm field. Same layering, same shared y-sort.
-    for (let x = margin; x < W - margin; x += 62)
-      bgTrees.push({ key: 'bg_barn', x: x + Phaser.Math.Between(-4, 4), y: margin - 2 });
-    for (let x = margin; x < W - margin; x += 62)
-      bgTrees.push({ key: 'bg_barn', x: x + Phaser.Math.Between(-4, 4), y: H - margin + 2 });
-    for (let y = yardT + margin; y < yardB - margin; y += 62)
-      bgTrees.push({ key: 'bg_barn', x: margin - 2, y: y + Phaser.Math.Between(-4, 4) });
-    for (let y = yardT + margin; y < yardB - margin; y += 62)
-      bgTrees.push({ key: 'bg_barn', x: W - margin + 2, y: y + Phaser.Math.Between(-4, 4) });
-    // Hay bales staggered between the barns, tucked toward the yard
-    for (let x = margin + 31; x < W - margin; x += 62)
-      bgTrees.push({ key: 'bg_haybale', x: x + Phaser.Math.Between(-3, 3), y: margin + 14 });
-    for (let x = margin + 31; x < W - margin; x += 62)
-      bgTrees.push({ key: 'bg_haybale', x: x + Phaser.Math.Between(-3, 3), y: H - margin - 14 });
-    for (let y = yardT + margin + 31; y < yardB - margin; y += 62)
-      bgTrees.push({ key: 'bg_haybale', x: margin + 7, y: y + Phaser.Math.Between(-3, 3) });
-    for (let y = yardT + margin + 31; y < yardB - margin; y += 62)
-      bgTrees.push({ key: 'bg_haybale', x: W - margin - 7, y: y + Phaser.Math.Between(-3, 3) });
+    // Farm border: hay bales dense along the outer rim (a hayfield
+    // naturally has many, playing the role the other themes' peaks/buttes
+    // play as the repeating far-background texture), a red barn only
+    // occasionally as a rare landmark (a real farm has one or two, not a
+    // barn every few yards), and a wooden fence rail nearest the yard
+    // (their treeline/prickly pear) — a fence is exactly what borders a
+    // real farm field. Same layering, same shared y-sort.
+    for (let x = margin; x < W - margin; x += 40)
+      bgTrees.push({ key: 'bg_haybale', x: x + Phaser.Math.Between(-3, 3), y: margin - 2 });
+    for (let x = margin; x < W - margin; x += 40)
+      bgTrees.push({ key: 'bg_haybale', x: x + Phaser.Math.Between(-3, 3), y: H - margin + 2 });
+    for (let y = yardT + margin; y < yardB - margin; y += 40)
+      bgTrees.push({ key: 'bg_haybale', x: margin - 2, y: y + Phaser.Math.Between(-3, 3) });
+    for (let y = yardT + margin; y < yardB - margin; y += 40)
+      bgTrees.push({ key: 'bg_haybale', x: W - margin + 2, y: y + Phaser.Math.Between(-3, 3) });
+    // Barns: sparse, one every ~200px so at most a couple show up per
+    // side rather than swarming the whole border.
+    for (let x = margin + 30; x < W - margin; x += 200)
+      bgTrees.push({ key: 'bg_barn', x: x + Phaser.Math.Between(-4, 4), y: margin + 8 });
+    for (let x = margin + 30; x < W - margin; x += 200)
+      bgTrees.push({ key: 'bg_barn', x: x + Phaser.Math.Between(-4, 4), y: H - margin - 8 });
+    for (let y = yardT + margin + 30; y < yardB - margin; y += 200)
+      bgTrees.push({ key: 'bg_barn', x: margin + 10, y: y + Phaser.Math.Between(-4, 4) });
+    for (let y = yardT + margin + 30; y < yardB - margin; y += 200)
+      bgTrees.push({ key: 'bg_barn', x: W - margin - 10, y: y + Phaser.Math.Between(-4, 4) });
     // Inner top/bottom rows: fence rail segments nearest the yard, plus
     // the occasional hay bale (same room-to-fit guard as the other themes)
     const innerFenceY = yardT - 12, innerFenceYB = yardB + 12;
