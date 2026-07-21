@@ -351,6 +351,7 @@ class GameScene extends Phaser.Scene {
     this.goat           = { active: false };
     this.cow            = { active: false };
     this.tumbleweed     = { active: false };
+    this.soccerBall     = { active: false };
     // Gated on the intro modal for the very first level only — see
     // buildIntroOverlay(). Already-dismissed (g_introShown) on every
     // level after that, so play starts immediately without re-showing it.
@@ -469,6 +470,8 @@ class GameScene extends Phaser.Scene {
     this.cowGfx.setDepth(4);
     this.tumbleweedGfx = this.add.graphics();
     this.tumbleweedGfx.setDepth(4);
+    this.soccerBallGfx = this.add.graphics();
+    this.soccerBallGfx.setDepth(4);
     this.dogGfx = this.add.graphics();
     this.dogGfx.setDepth(4);
     this.drawDog();
@@ -478,7 +481,7 @@ class GameScene extends Phaser.Scene {
 
     this.mowAt(this.player.x, this.player.y);
     if (g_introShown) {
-      this.scheduleSquirrel();
+      this.scheduleDistraction();
       this.scheduleBird();
       this.schedulePeekers();
     }
@@ -559,6 +562,11 @@ class GameScene extends Phaser.Scene {
       // Rendering in CLAUDE.md): a corner_tl cell is the box's top-left
       // corner, so its line continues rightward (top edge) and downward
       // (left edge) from the corner point, and so on for the other three.
+      // diag_corner_* pieces are a 45°-cut version of the same corner idea,
+      // used only by the center circle (see centerCircleType()) so it
+      // reads as round rather than square — each connects the two
+      // straight edges that meet at that corner with a single diagonal
+      // stroke instead of a right angle.
       const lineVariants = {
         h:         gx => gx.fillRect(0, stub, CELL, 2),
         v:         gx => gx.fillRect(stub, 0, 2, CELL),
@@ -566,12 +574,17 @@ class GameScene extends Phaser.Scene {
         corner_tr: gx => { gx.fillRect(0, stub, stub + 2, 2);       gx.fillRect(stub, stub, 2, CELL - stub); },
         corner_bl: gx => { gx.fillRect(stub, stub, CELL - stub, 2); gx.fillRect(stub, 0, 2, stub + 2); },
         corner_br: gx => { gx.fillRect(0, stub, stub + 2, 2);       gx.fillRect(stub, 0, 2, stub + 2); },
+        diag_corner_tl: gx => gx.lineBetween(CELL, CELL / 2, CELL / 2, CELL),
+        diag_corner_tr: gx => gx.lineBetween(0, CELL / 2, CELL / 2, CELL),
+        diag_corner_bl: gx => gx.lineBetween(CELL / 2, 0, CELL, CELL / 2),
+        diag_corner_br: gx => gx.lineBetween(CELL / 2, 0, 0, CELL / 2),
         dot:       gx => gx.fillCircle(CELL / 2, CELL / 2, 3),
       };
       for (const [type, draw] of Object.entries(lineVariants)) {
         const gl = this.make.graphics({ add: false });
         drawBase(gl);
         gl.fillStyle(lineColor, 0.95);
+        gl.lineStyle(2, lineColor, 0.95);
         draw(gl);
         gl.generateTexture(`mowed_${h}_line_${type}`, CELL, CELL);
         gl.destroy();
@@ -633,31 +646,31 @@ class GameScene extends Phaser.Scene {
   // on a taller yard (same "compute from YARD_ROWS at runtime" approach the
   // 'rings' pattern's center-distance math above already uses).
   //
-  // Returns one of: 'dot', 'h', 'v', 'corner_tl'/'tr'/'bl'/'br', or null
-  // for plain grass. Priority (first match wins) is center spot, outer
-  // pitch boundary, center box, halfway line, penalty boxes, penalty
-  // spots — chosen so higher-priority features simply take the cell where
-  // two features would otherwise overlap (e.g. the halfway line runs
-  // straight through the center box's interior, exactly like a real
-  // pitch's line bisecting the center circle) rather than needing every
-  // feature to be pre-checked for collisions against every other.
+  // Returns one of: 'dot', 'h', 'v', 'corner_tl'/'tr'/'bl'/'br',
+  // 'diag_corner_tl'/'tr'/'bl'/'br', or null for plain grass. Priority
+  // (first match wins) is center spot, outer pitch boundary, center
+  // circle, halfway line, penalty boxes, penalty spots — chosen so
+  // higher-priority features simply take the cell where two features
+  // would otherwise overlap (e.g. the halfway line runs straight through
+  // the center circle's open interior, exactly like a real pitch's line
+  // bisecting the center circle) rather than needing every feature to be
+  // pre-checked for collisions against every other.
   //
-  // The "center circle" is drawn as a small rectangle, not a curve — with
-  // the pitch already blocky/grid-aligned by design (see Mowed Grass
-  // Rendering in CLAUDE.md), a squared-off center box reads as clearly as
-  // a circle would at this resolution without needing diagonal textures.
-  // It's only drawn once there's enough vertical room between the halfway
-  // line and the penalty boxes to avoid colliding with them — on the
-  // smallest (8-row, landscape/desktop) yards there isn't, so those levels
-  // rely on just the halfway line + center spot, and the box appears once
-  // a taller portrait yard actually has the room.
+  // The center circle is only drawn once there's enough vertical room
+  // between the halfway line and the penalty boxes to avoid colliding
+  // with them — on the smallest (8-row, landscape/desktop) yards there
+  // isn't, so those levels rely on just the halfway line + center spot,
+  // and the circle appears once a taller portrait yard actually has the
+  // room.
   soccerLineType(gc, gr) {
     const cols = YARD_COLS, rows = YARD_ROWS;
     const midR = Math.floor((rows - 1) / 2);
     const centerCol = Math.floor((cols - 1) / 2);
+    const centerC = (cols - 1) / 2; // half-integer — cols is even, no single center column
 
     // Classifies (gc, gr) against one rectangle's edges: null if outside
-    // or strictly interior, else 'h'/'v'/a corner_* type.
+    // or strictly interior, else 'h'/'v'/a corner_* type. Used for the
+    // pitch boundary and penalty boxes, which are genuinely rectangular.
     const ring = (cMin, cMax, rMin, rMax) => {
       if (gc < cMin || gc > cMax || gr < rMin || gr > rMax) return null;
       const onLeft = gc === cMin, onRight = gc === cMax;
@@ -671,16 +684,36 @@ class GameScene extends Phaser.Scene {
       return null;
     };
 
+    // Classifies (gc, gr) against a circle of radius R cells around
+    // (centerC, centerR) — a blocky octagon (straight h/v sides, 45°-cut
+    // diagonal corners) rather than a rectangle, so the center circle
+    // actually reads as round. Chebyshev-ring math (floor of the max
+    // axis distance) mirrors the 'rings' mow pattern above; the corner
+    // cells (where both axis distances floor to R) get a diagonal piece
+    // instead of a right angle to cut them off.
+    const circle = (centerR, R) => {
+      const dc = gc - centerC, dr = gr - centerR;
+      const fc = Math.floor(Math.abs(dc)), fr = Math.floor(Math.abs(dr));
+      if (Math.max(fc, fr) !== R) return null;
+      if (fc === R && fr === R) {
+        if (dc < 0 && dr < 0) return 'diag_corner_tl';
+        if (dc > 0 && dr < 0) return 'diag_corner_tr';
+        if (dc < 0 && dr > 0) return 'diag_corner_bl';
+        return 'diag_corner_br';
+      }
+      return fc === R ? 'v' : 'h';
+    };
+
     if (gc === centerCol && gr === midR) return 'dot'; // center spot
 
     const boundary = ring(0, cols - 1, 0, rows - 1); // touchlines/goal lines
     if (boundary) return boundary;
 
     const penaltyDepth = Phaser.Math.Clamp(Math.round(rows * 0.15), 2, 6);
-    const centerBoxRows = Math.min(3, midR - penaltyDepth - 1);
-    if (centerBoxRows >= 2) {
-      const box = ring(centerCol - 2, centerCol + 3, midR - centerBoxRows, midR + centerBoxRows);
-      if (box) return box;
+    const centerRadius = Math.min(3, midR - penaltyDepth - 1);
+    if (centerRadius >= 2) {
+      const c = circle(midR, centerRadius);
+      if (c) return c;
     }
 
     if (gr === midR) return 'h'; // halfway line
@@ -1556,14 +1589,18 @@ class GameScene extends Phaser.Scene {
     } else {
     // Stadium border: two goal frames as the only landmarks (like the
     // farm's 2 barns), fixed at the horizontal center of the top/bottom
-    // edges — right where a real goal sits on its own goal line — with
-    // a mix of bleacher stands and floodlight poles filling the rest of
-    // the border on all 4 sides (the repeating far-background texture
-    // the other themes' peaks/buttes/barns play), plus a small corner
-    // flag at each of the pitch's own 4 corners.
+    // edges — right where a real goal sits on its own goal line, so
+    // they're anchored to the pitch boundary (yardT/yardB) rather than
+    // the far outer margin the rest of the border landmarks use; a
+    // slight overlap onto the grass reads as the frame sitting on the
+    // line, same as a real goal — with a mix of bleacher stands and
+    // floodlight poles filling the rest of the border on all 4 sides
+    // (the repeating far-background texture the other themes' peaks/
+    // buttes/barns play), plus a small corner flag at each of the pitch's
+    // own 4 corners.
     const goalX = (yardL + yardR) / 2;
-    bgTrees.push({ key: 'bg_goalpost', x: goalX, y: margin + 8 });
-    bgTrees.push({ key: 'bg_goalpost', x: goalX, y: H - margin - 8 });
+    bgTrees.push({ key: 'bg_goalpost', x: goalX, y: yardT - 14 });
+    bgTrees.push({ key: 'bg_goalpost', x: goalX, y: yardB + 14 });
 
     const stadiumFill = ['bg_bleacher', 'bg_floodlight'];
     for (let x = margin; x < W - margin; x += 46) {
@@ -2061,7 +2098,7 @@ class GameScene extends Phaser.Scene {
       this.started  = true;
       introEl.classList.remove('visible');
       setupAudio();
-      this.scheduleSquirrel();
+      this.scheduleDistraction();
       this.scheduleBird();
       this.schedulePeekers();
     };
@@ -2182,6 +2219,19 @@ class GameScene extends Phaser.Scene {
       }
       this.mowedRT.render();
     }
+  }
+
+  // Picks the level's "runs across the yard" distraction: the stadium
+  // theme gets a rolling soccer ball (see Soccer Ball below) instead of
+  // the regular squirrel — a squirrel darting across a pitch would clash
+  // with the theme, where a ball rolling through reads as right at home.
+  // Every other theme keeps the squirrel unchanged. Called instead of
+  // scheduleSquirrel() directly from create()/buildIntroOverlay(); once
+  // started, each one reschedules itself on despawn without needing this
+  // branch again.
+  scheduleDistraction() {
+    if (this.levelData.theme === 'stadium') this.scheduleSoccerBall();
+    else this.scheduleSquirrel();
   }
 
   // ── Squirrel ──────────────────────────────────────────────────────────────
@@ -2763,6 +2813,70 @@ class GameScene extends Phaser.Scene {
     g.strokeCircle(x, y, 3);
   }
 
+  // ── Soccer Ball ───────────────────────────────────────────────────────────
+  // The stadium theme's distraction, replacing the squirrel (see
+  // scheduleDistraction() above) — modeled directly on the tumbleweed:
+  // same schedule/launch/update/despawn cycle, no collision, no effect on
+  // mowing, rolling all the way across the yard itself (not confined to
+  // the border) with the same skipping bounce, just re-skinned as a ball
+  // since that's what naturally rolls through a pitch.
+
+  scheduleSoccerBall() {
+    if (this.won) return;
+    this.soccerBallTimer = this.time.delayedCall(
+      Phaser.Math.Between(6000, 14000), this.launchSoccerBall, [], this);
+  }
+
+  launchSoccerBall() {
+    if (this.won) return;
+    const fromLeft = Phaser.Math.Between(0, 1) === 0;
+    this.soccerBall = {
+      active: true,
+      x: fromLeft ? -12 : W + 12,
+      baseY: Phaser.Math.Between(YARD_Y * CELL + 12, (YARD_Y + YARD_ROWS) * CELL - 12),
+      vx: (fromLeft ? 1 : -1) * Phaser.Math.Between(70, 100),
+      phase: 0,
+    };
+  }
+
+  updateSoccerBall(dt) {
+    if (!this.soccerBall.active) return;
+    const b = this.soccerBall;
+    b.x     += b.vx * dt;
+    b.phase += dt * 6; // spin + bounce driver
+    if (b.x < -24 || b.x > W + 24) {
+      b.active = false;
+      this.soccerBallGfx.clear();
+      this.scheduleSoccerBall();
+      return;
+    }
+    this.drawSoccerBall();
+  }
+
+  drawSoccerBall() {
+    const g = this.soccerBallGfx;
+    g.clear();
+    const b   = this.soccerBall;
+    const hop = Math.abs(Math.sin(b.phase * 0.6)) * 5; // skipping bounce
+    const x   = b.x, y = b.baseY - hop;
+
+    // Ground shadow stays at baseY, fading as the ball hops higher
+    g.fillStyle(0x000000, 0.2 - hop * 0.016);
+    g.fillEllipse(x, b.baseY + 5, 11 - hop * 0.5, 3);
+
+    // White ball body with 3 dark patches rotating with phase so it reads
+    // as rolling rather than sliding, plus a thin outline for definition.
+    g.fillStyle(0xf0f0f0);
+    g.fillCircle(x, y, 6);
+    g.fillStyle(0x222222);
+    for (let i = 0; i < 3; i++) {
+      const a  = b.phase + i * (Math.PI * 2 / 3);
+      g.fillCircle(x + Math.cos(a) * 3.2, y + Math.sin(a) * 3.2, 1.6);
+    }
+    g.lineStyle(1, 0x000000, 0.25);
+    g.strokeCircle(x, y, 6);
+  }
+
   // ── Dog ───────────────────────────────────────────────────────────────────
   // Sits in the yard (not the border, unlike bird/deer/fox) for the whole
   // level. Reacts to proximity every frame rather than a scheduled timer:
@@ -3118,6 +3232,7 @@ class GameScene extends Phaser.Scene {
     this.updateGoat(dt);
     this.updateCow(dt);
     this.updateTumbleweed(dt);
+    this.updateSoccerBall(dt);
     this.updateDog(dt);
     this.updateFrog(dt);
     this.drawJoystick();
