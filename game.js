@@ -2896,26 +2896,48 @@ class GameScene extends Phaser.Scene {
 // #game-container needs an explicit height matching the grown canvas (see
 // computeYardRows) so it doesn't just stretch to fill the whole body —
 // that's what #controls-spacer in index.html reserves room for the D-pad.
-// Runs once at load; the grid size doesn't live-recompute on resize/rotate.
+// The yard grid itself (YARD_ROWS/W/H) is still a one-time computation at
+// load and never live-recomputes on rotate (see computeYardRows) — but this
+// function's own CSS state must re-apply every time the device actually
+// rotates, not just once at boot. It used to only ever run once: rotating
+// away from whichever orientation the page happened to load in left
+// #game-container's aspect-ratio stale (set for portrait, never cleared
+// when back in landscape, or never set at all if the page loaded in
+// landscape and portrait's flex rule then had nothing to size against) —
+// reported directly as "the game is mostly unplayable" after rotating.
+// Re-running this on every resize/orientationchange, and clearing the
+// aspect-ratio outright outside portrait+touch instead of only ever
+// setting it, keeps the layout correctly snapped to whichever orientation
+// the device is actually in, without touching the grid at all.
+let g_game = null; // set once Phaser boots, below
 function applyResponsiveLayout() {
   const isPortraitTouch = window.matchMedia(
     '(hover: none) and (pointer: coarse) and (orientation: portrait)'
   ).matches;
-  if (isPortraitTouch) {
-    const gameContainer = document.getElementById('game-container');
-    if (gameContainer) gameContainer.style.aspectRatio = `${W} / ${H}`;
-  }
+  const gameContainer = document.getElementById('game-container');
+  if (gameContainer) gameContainer.style.aspectRatio = isPortraitTouch ? `${W} / ${H}` : '';
 
   const uiCanvas = document.getElementById('ui-canvas');
   if (uiCanvas) {
     uiCanvas.style.width  = W + 'px';
     uiCanvas.style.height = H + 'px';
   }
+
+  // Force the Scale Manager to re-read #game-container's just-updated size
+  // and refit the canvas. Without this, on the very tick of a rotation
+  // Phaser's own internal resize handling (registered before this
+  // function's listener, since the game boots after this file's first
+  // call) can run against the stale pre-rotation container size, leaving
+  // the canvas misfit until some later, unrelated resize happened to
+  // trigger a correct one.
+  if (g_game) g_game.scale.refresh();
 }
 applyResponsiveLayout();
+window.addEventListener('resize', applyResponsiveLayout);
+window.addEventListener('orientationchange', applyResponsiveLayout);
 
 // ─── Boot ────────────────────────────────────────────────────────────────────
-new Phaser.Game({
+g_game = new Phaser.Game({
   type: Phaser.AUTO,
   width: W,
   height: H,
