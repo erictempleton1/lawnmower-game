@@ -533,6 +533,49 @@ class GameScene extends Phaser.Scene {
       gfAlt.strokeRect(0, 0, CELL, CELL);
       gfAlt.generateTexture(`mowed_${h}_full_alt`, CELL, CELL);
       gfAlt.destroy();
+
+      // Field-line variants for the 'soccer' mowPattern (level-08.json) —
+      // instead of just a darker shade, mowing over a cell that's part of
+      // the pitch's line geometry (see soccerLineType()) reveals a white
+      // line/corner/spot marking painted on the same base mowed-grass
+      // texture. Generated unconditionally for every level, same as
+      // `_full_alt` above, for consistency with the rest of this per-height
+      // texture set even though only 'soccer'-pattern levels ever pick them.
+      const lineColor = 0xf2f2f2;
+      const stub = CELL / 2 - 1; // 7 — half a cell short of the 2px line's own width
+      const drawBase = gfx => {
+        gfx.fillStyle(base);
+        gfx.fillRect(0, 0, CELL, CELL);
+        gfx.fillStyle(stripe, 0.5);
+        gfx.fillRect(2, 0, 3, CELL);
+        gfx.fillRect(10, 0, 2, CELL);
+        gfx.lineStyle(1, 0x000000, 0.05);
+        gfx.strokeRect(0, 0, CELL, CELL);
+      };
+      // Straight segments plus 4 right-angle corner pieces (an L hugging
+      // whichever two edges the line's box-corner actually turns along) —
+      // kept blocky/axis-aligned rather than a drawn curve, same philosophy
+      // as the always-full-cell mowed grass itself (see Mowed Grass
+      // Rendering in CLAUDE.md): a corner_tl cell is the box's top-left
+      // corner, so its line continues rightward (top edge) and downward
+      // (left edge) from the corner point, and so on for the other three.
+      const lineVariants = {
+        h:         gx => gx.fillRect(0, stub, CELL, 2),
+        v:         gx => gx.fillRect(stub, 0, 2, CELL),
+        corner_tl: gx => { gx.fillRect(stub, stub, CELL - stub, 2); gx.fillRect(stub, stub, 2, CELL - stub); },
+        corner_tr: gx => { gx.fillRect(0, stub, stub + 2, 2);       gx.fillRect(stub, stub, 2, CELL - stub); },
+        corner_bl: gx => { gx.fillRect(stub, stub, CELL - stub, 2); gx.fillRect(stub, 0, 2, stub + 2); },
+        corner_br: gx => { gx.fillRect(0, stub, stub + 2, 2);       gx.fillRect(stub, 0, 2, stub + 2); },
+        dot:       gx => gx.fillCircle(CELL / 2, CELL / 2, 3),
+      };
+      for (const [type, draw] of Object.entries(lineVariants)) {
+        const gl = this.make.graphics({ add: false });
+        drawBase(gl);
+        gl.fillStyle(lineColor, 0.95);
+        draw(gl);
+        gl.generateTexture(`mowed_${h}_line_${type}`, CELL, CELL);
+        gl.destroy();
+      }
     }
   }
 
@@ -557,6 +600,10 @@ class GameScene extends Phaser.Scene {
   // Any other/missing value renders a flat, uniform mow (unchanged from
   // before mow patterns existed).
   mowedTextureKey(h, gc, gr) {
+    if (this.levelData.mowPattern === 'soccer') {
+      const lineType = this.soccerLineType(gc, gr);
+      return lineType ? `mowed_${h}_line_${lineType}` : `mowed_${h}_full`;
+    }
     let alt = false;
     if (this.levelData.mowPattern === 'stripe') {
       alt = gc % 2 === 1;
@@ -577,6 +624,80 @@ class GameScene extends Phaser.Scene {
       alt = gc % 4 === 0 || gr % 4 === 0;
     }
     return `mowed_${h}_full${alt ? '_alt' : ''}`;
+  }
+
+  // Soccer pitch line markings (level-08.json's mowPattern: 'soccer'),
+  // computed from the actual YARD_ROWS so the pitch always spans the whole
+  // yard — including a portrait-grown grid much taller than the authored
+  // 8 rows — rather than a fixed layout that would look tiny and off-center
+  // on a taller yard (same "compute from YARD_ROWS at runtime" approach the
+  // 'rings' pattern's center-distance math above already uses).
+  //
+  // Returns one of: 'dot', 'h', 'v', 'corner_tl'/'tr'/'bl'/'br', or null
+  // for plain grass. Priority (first match wins) is center spot, outer
+  // pitch boundary, center box, halfway line, penalty boxes, penalty
+  // spots — chosen so higher-priority features simply take the cell where
+  // two features would otherwise overlap (e.g. the halfway line runs
+  // straight through the center box's interior, exactly like a real
+  // pitch's line bisecting the center circle) rather than needing every
+  // feature to be pre-checked for collisions against every other.
+  //
+  // The "center circle" is drawn as a small rectangle, not a curve — with
+  // the pitch already blocky/grid-aligned by design (see Mowed Grass
+  // Rendering in CLAUDE.md), a squared-off center box reads as clearly as
+  // a circle would at this resolution without needing diagonal textures.
+  // It's only drawn once there's enough vertical room between the halfway
+  // line and the penalty boxes to avoid colliding with them — on the
+  // smallest (8-row, landscape/desktop) yards there isn't, so those levels
+  // rely on just the halfway line + center spot, and the box appears once
+  // a taller portrait yard actually has the room.
+  soccerLineType(gc, gr) {
+    const cols = YARD_COLS, rows = YARD_ROWS;
+    const midR = Math.floor((rows - 1) / 2);
+    const centerCol = Math.floor((cols - 1) / 2);
+
+    // Classifies (gc, gr) against one rectangle's edges: null if outside
+    // or strictly interior, else 'h'/'v'/a corner_* type.
+    const ring = (cMin, cMax, rMin, rMax) => {
+      if (gc < cMin || gc > cMax || gr < rMin || gr > rMax) return null;
+      const onLeft = gc === cMin, onRight = gc === cMax;
+      const onTop = gr === rMin, onBottom = gr === rMax;
+      if (onTop && onLeft) return 'corner_tl';
+      if (onTop && onRight) return 'corner_tr';
+      if (onBottom && onLeft) return 'corner_bl';
+      if (onBottom && onRight) return 'corner_br';
+      if (onTop || onBottom) return 'h';
+      if (onLeft || onRight) return 'v';
+      return null;
+    };
+
+    if (gc === centerCol && gr === midR) return 'dot'; // center spot
+
+    const boundary = ring(0, cols - 1, 0, rows - 1); // touchlines/goal lines
+    if (boundary) return boundary;
+
+    const penaltyDepth = Phaser.Math.Clamp(Math.round(rows * 0.15), 2, 6);
+    const centerBoxRows = Math.min(3, midR - penaltyDepth - 1);
+    if (centerBoxRows >= 2) {
+      const box = ring(centerCol - 2, centerCol + 3, midR - centerBoxRows, midR + centerBoxRows);
+      if (box) return box;
+    }
+
+    if (gr === midR) return 'h'; // halfway line
+
+    const boxColMin = centerCol - 4, boxColMax = centerCol + 5;
+    const topBox = ring(boxColMin, boxColMax, 0, penaltyDepth);
+    if (topBox) return topBox;
+    const bottomBox = ring(boxColMin, boxColMax, rows - 1 - penaltyDepth, rows - 1);
+    if (bottomBox) return bottomBox;
+
+    // Penalty spots, one row inside each box's far edge so they land on
+    // open interior rather than right on the edge line drawn above.
+    const spotOffset = penaltyDepth - 1;
+    if (gc === centerCol && gr === spotOffset) return 'dot';
+    if (gc === centerCol && gr === rows - 1 - spotOffset) return 'dot';
+
+    return null;
   }
 
   buildLevelTextures() {
@@ -850,6 +971,7 @@ class GameScene extends Phaser.Scene {
     const isMountain = this.levelData.theme === 'mountain';
     const isDesert   = this.levelData.theme === 'desert';
     const isFarm     = this.levelData.theme === 'farm';
+    const isStadium  = this.levelData.theme === 'stadium';
 
     // Self-contained (not in buildLevelTextures()) since this runs before
     // that does — the unmowable border gets its own bigger, more muted
@@ -1095,13 +1217,90 @@ class GameScene extends Phaser.Scene {
       cb.destroy();
     }
 
+    // Stadium-theme border textures: a white goal frame (the landmark,
+    // exactly 2 placed total like the farm's barns — one per goal line),
+    // tiered bleacher stands and floodlight poles (the repeating far-
+    // background filler, standing in for the other themes' peaks/buttes/
+    // barns), and a small corner flag at each of the pitch's own 4 corners.
+    // Same muted-scenery philosophy throughout, just stadium concrete/
+    // crowd-color instead of natural landscape tones.
+    if (isStadium) {
+      const GP_W = 50, GP_H = 36;
+      const gp = this.make.graphics({ add: false });
+      gp.fillStyle(0x000000, 0.2);
+      gp.fillEllipse(GP_W / 2, GP_H - 3, GP_W * 0.8, 5);
+      // Net: faint mesh behind the frame
+      gp.fillStyle(0xffffff, 0.08);
+      gp.fillRect(6, 6, GP_W - 12, GP_H - 12);
+      gp.lineStyle(1, 0xffffff, 0.22);
+      for (let x = 6; x <= GP_W - 6; x += 5) gp.lineBetween(x, 6, x, GP_H - 6);
+      for (let y = 6; y <= GP_H - 6; y += 5) gp.lineBetween(6, y, GP_W - 6, y);
+      // Frame: posts + crossbar
+      gp.fillStyle(0xf0f0f0);
+      gp.fillRect(4, 4, 4, GP_H - 8);
+      gp.fillRect(GP_W - 8, 4, 4, GP_H - 8);
+      gp.fillRect(4, 4, GP_W - 8, 4);
+      gp.fillStyle(0xd6d6d6);
+      gp.fillRect(4, GP_H - 8, 4, 4);
+      gp.fillRect(GP_W - 8, GP_H - 8, 4, 4);
+      gp.generateTexture('bg_goalpost', GP_W, GP_H);
+      gp.destroy();
+
+      const BL_W = 44, BL_H = 30;
+      const bl = this.make.graphics({ add: false });
+      bl.fillStyle(0x000000, 0.18);
+      bl.fillEllipse(BL_W / 2, BL_H - 3, BL_W * 0.85, 4);
+      // 3 stepped concrete tiers, back tier tallest
+      bl.fillStyle(0x565b62);
+      bl.fillRect(2, BL_H - 26, BL_W - 4, 22);
+      bl.fillStyle(0x686e77);
+      bl.fillRect(2, BL_H - 18, BL_W - 4, 14);
+      bl.fillStyle(0x7a818b);
+      bl.fillRect(2, BL_H - 10, BL_W - 4, 6);
+      // Scattered crowd-color flecks across the tiers
+      const crowdColors = [0xdd4444, 0x4488dd, 0xffdd44, 0xffffff, 0x44aa66];
+      for (let i = 0; i < 10; i++) {
+        bl.fillStyle(crowdColors[i % crowdColors.length]);
+        bl.fillRect(4 + (i * 4) % (BL_W - 8), BL_H - 24 + Math.floor(i / 8) * 8, 2, 2);
+      }
+      bl.generateTexture('bg_bleacher', BL_W, BL_H);
+      bl.destroy();
+
+      const FL_W = 16, FL_H = 54;
+      const fl = this.make.graphics({ add: false });
+      fl.fillStyle(0x000000, 0.15);
+      fl.fillEllipse(FL_W / 2, FL_H - 3, FL_W * 0.6, 4);
+      fl.fillStyle(0x3a3a3a);
+      fl.fillRect(FL_W / 2 - 2, 10, 4, FL_H - 14); // pole
+      fl.fillStyle(0x2a2a2a);
+      fl.fillRect(FL_W / 2 - 6, 2, 12, 8);         // lamp housing
+      fl.fillStyle(0xfff2b0, 0.9);
+      fl.fillRect(FL_W / 2 - 4, 3, 3, 3);
+      fl.fillRect(FL_W / 2, 3, 3, 3);
+      fl.fillRect(FL_W / 2 - 4, 6, 3, 3);
+      fl.fillRect(FL_W / 2, 6, 3, 3);
+      fl.generateTexture('bg_floodlight', FL_W, FL_H);
+      fl.destroy();
+
+      const CF_W = 14, CF_H = 22;
+      const cf = this.make.graphics({ add: false });
+      cf.fillStyle(0x000000, 0.15);
+      cf.fillEllipse(CF_W / 2, CF_H - 2, CF_W * 0.6, 3);
+      cf.fillStyle(0xdddddd);
+      cf.fillRect(CF_W / 2 - 1, 4, 2, CF_H - 6);   // post
+      cf.fillStyle(0xdd3333);
+      cf.fillTriangle(CF_W / 2 + 1, 4, CF_W / 2 + 1, 10, CF_W - 2, 7); // flag
+      cf.generateTexture('bg_corner_flag', CF_W, CF_H);
+      cf.destroy();
+    }
+
     const g = this.make.graphics({ add: false });
 
     // Border: a darker, wilder green (unmown) instead of flat dirt, so it
     // reads as untamed nature framing the tidy yard rather than dead
     // space — or muted sand/dirt on desert/farm levels, same keep-it-
     // darker-than-the-yard principle so the lawn still pops.
-    g.fillStyle(isDesert ? 0x6e5a32 : isFarm ? 0x5a4a26 : 0x1e3a12);
+    g.fillStyle(isDesert ? 0x6e5a32 : isFarm ? 0x5a4a26 : isStadium ? 0x1b2f1b : 0x1e3a12);
     g.fillRect(0, 0, W, H);
     g.fillStyle(C.bg);
     g.fillRect(YARD_X * CELL, YARD_Y * CELL, YARD_COLS * CELL, YARD_ROWS * CELL);
@@ -1147,19 +1346,21 @@ class GameScene extends Phaser.Scene {
     // scattered wildflowers as small colorful accents among them on forest/
     // mountain levels. Desert swaps the blades for sparser, shorter dry-
     // scrub tufts in sun-bleached tan; farm swaps them for dry golden hay-
-    // field tufts. Both desert and farm drop wildflowers entirely
-    // (bloomChance 0) — their borders are already busy with their own
-    // theme-specific decor (buttes/saguaros/prickly-pear, or fence/barn/
-    // haybale/corn), and flowers dotted between them read as clutter
-    // rather than an accent; the yard's own garden bed still supplies
-    // plenty of color.
+    // field tufts; stadium swaps them for a trimmer, more subdued turf-
+    // green tuft (still a wild margin, just a mown stadium ground's, not a
+    // farm/forest one). Desert, farm, and stadium all drop wildflowers
+    // entirely (bloomChance 0) — their borders are already busy with their
+    // own theme-specific decor (buttes/saguaros/prickly-pear, fence/barn/
+    // haybale/corn, or bleachers/floodlights/goalposts), and flowers dotted
+    // between them read as clutter rather than an accent; the yard's own
+    // garden bed still supplies plenty of color on themes that have one.
     const yardL = YARD_X * CELL, yardT = YARD_Y * CELL;
     const yardR = (YARD_X + YARD_COLS) * CELL, yardB = (YARD_Y + YARD_ROWS) * CELL;
     const wildflowerColors = [0xff5555, 0xffdd44, 0xcc55ff, 0xff8844, 0x55ccff, 0xffffff];
-    const bladeColor  = isDesert ? 0x453a1c : isFarm ? 0x6b5518 : 0x0f2408;
-    const bladeChance = isDesert ? 0.4 : 0.55;
-    const bloomChance = isDesert || isFarm ? 0 : 0.1;
-    const stemColor   = isDesert ? 0x5a4c26 : isFarm ? 0x4a3a18 : 0x2a5a1a;
+    const bladeColor  = isDesert ? 0x453a1c : isFarm ? 0x6b5518 : isStadium ? 0x163018 : 0x0f2408;
+    const bladeChance = isDesert ? 0.4 : isStadium ? 0.45 : 0.55;
+    const bloomChance = isDesert || isFarm || isStadium ? 0 : 0.1;
+    const stemColor   = isDesert ? 0x5a4c26 : isFarm ? 0x4a3a18 : isStadium ? 0x1c3a1c : 0x2a5a1a;
     for (let y = 4; y < H; y += 7) {
       for (let x = 4; x < W; x += 7) {
         if (x > yardL && x < yardR && y > yardT && y < yardB) continue;
@@ -1200,7 +1401,7 @@ class GameScene extends Phaser.Scene {
     // or any residual overlap.
     const margin = 20;
     const bgTrees = [];
-    if (!isMountain && !isDesert && !isFarm) {
+    if (!isMountain && !isDesert && !isFarm && !isStadium) {
     for (let x = margin; x < W - margin; x += 66)
       bgTrees.push({ key: 'bg_tree', x: x + Phaser.Math.Between(-4, 4), y: margin });
     for (let x = margin; x < W - margin; x += 66)
@@ -1315,7 +1516,7 @@ class GameScene extends Phaser.Scene {
       for (let x = margin + 48; x < W - margin; x += 128)
         bgTrees.push({ key: 'bg_saguaro', x: x + Phaser.Math.Between(-6, 6), y: innerPadYB - 8 + Phaser.Math.Between(-2, 2) });
     }
-    } else {
+    } else if (isFarm) {
     // Farm border: a continuous wooden fence rings the entire yard right
     // at its edge, on all 4 sides — a real farm field is fenced all the
     // way around, not just top/bottom, unlike the other themes' inner
@@ -1352,6 +1553,37 @@ class GameScene extends Phaser.Scene {
       bgTrees.push({ key: 'bg_fence_v', x: fenceL + Phaser.Math.Between(-2, 2), y: y + Phaser.Math.Between(-2, 2) });
     for (let y = yardT + 20; y < yardB - 20; y += 40)
       bgTrees.push({ key: 'bg_fence_v', x: fenceR + Phaser.Math.Between(-2, 2), y: y + Phaser.Math.Between(-2, 2) });
+    } else {
+    // Stadium border: two goal frames as the only landmarks (like the
+    // farm's 2 barns), fixed at the horizontal center of the top/bottom
+    // edges — right where a real goal sits on its own goal line — with
+    // a mix of bleacher stands and floodlight poles filling the rest of
+    // the border on all 4 sides (the repeating far-background texture
+    // the other themes' peaks/buttes/barns play), plus a small corner
+    // flag at each of the pitch's own 4 corners.
+    const goalX = (yardL + yardR) / 2;
+    bgTrees.push({ key: 'bg_goalpost', x: goalX, y: margin + 8 });
+    bgTrees.push({ key: 'bg_goalpost', x: goalX, y: H - margin - 8 });
+
+    const stadiumFill = ['bg_bleacher', 'bg_floodlight'];
+    for (let x = margin; x < W - margin; x += 46) {
+      if (Math.abs(x - goalX) < 26) continue; // leave room around the goal
+      bgTrees.push({ key: stadiumFill[Phaser.Math.Between(0, 1)], x: x + Phaser.Math.Between(-3, 3), y: margin - 2 });
+    }
+    for (let x = margin; x < W - margin; x += 46) {
+      if (Math.abs(x - goalX) < 26) continue;
+      bgTrees.push({ key: stadiumFill[Phaser.Math.Between(0, 1)], x: x + Phaser.Math.Between(-3, 3), y: H - margin + 2 });
+    }
+    for (let y = yardT + margin; y < yardB - margin; y += 46)
+      bgTrees.push({ key: stadiumFill[Phaser.Math.Between(0, 1)], x: margin - 2, y: y + Phaser.Math.Between(-3, 3) });
+    for (let y = yardT + margin; y < yardB - margin; y += 46)
+      bgTrees.push({ key: stadiumFill[Phaser.Math.Between(0, 1)], x: W - margin + 2, y: y + Phaser.Math.Between(-3, 3) });
+
+    // Corner flags right at the pitch's own 4 corners.
+    bgTrees.push({ key: 'bg_corner_flag', x: yardL - 6, y: yardT - 4 });
+    bgTrees.push({ key: 'bg_corner_flag', x: yardR + 6, y: yardT - 4 });
+    bgTrees.push({ key: 'bg_corner_flag', x: yardL - 6, y: yardB + 4 });
+    bgTrees.push({ key: 'bg_corner_flag', x: yardR + 6, y: yardB + 4 });
     }
 
     bgTrees.sort((a, b) => a.y - b.y);
