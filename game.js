@@ -1148,20 +1148,19 @@ class GameScene extends Phaser.Scene {
     // swaps both: sparser, shorter dry-scrub tufts in sun-bleached tan,
     // and a smaller, sun-washed bloom palette (globemallow coral, brittle-
     // bush yellow, white) at a lower rate — sparse is the desert look.
-    // Farm swaps them for dry golden hay-field tufts and a classic
-    // pasture-flower palette (poppy red, daisy white, black-eyed-susan
-    // yellow) at the same rate as forest — a farm border reads as an
-    // unmown hayfield, not sparse like desert scrub.
+    // Farm keeps the dry golden hay-field blades but drops wildflowers
+    // entirely (bloomChance 0) — the border's already busy with fence/
+    // barn/haybale/corn decor, and flowers dotted between them read as
+    // clutter rather than an accent; the yard's own garden bed still
+    // supplies plenty of color.
     const yardL = YARD_X * CELL, yardT = YARD_Y * CELL;
     const yardR = (YARD_X + YARD_COLS) * CELL, yardB = (YARD_Y + YARD_ROWS) * CELL;
     const wildflowerColors = isDesert
       ? [0xf0d060, 0xe08050, 0xffffff]
-      : isFarm
-      ? [0xdd3333, 0xffffff, 0xffdd33]
       : [0xff5555, 0xffdd44, 0xcc55ff, 0xff8844, 0x55ccff, 0xffffff];
     const bladeColor  = isDesert ? 0x453a1c : isFarm ? 0x6b5518 : 0x0f2408;
     const bladeChance = isDesert ? 0.4 : 0.55;
-    const bloomChance = isDesert ? 0.05 : 0.1;
+    const bloomChance = isDesert ? 0.05 : isFarm ? 0 : 0.1;
     const stemColor   = isDesert ? 0x5a4c26 : isFarm ? 0x4a3a18 : 0x2a5a1a;
     for (let y = 4; y < H; y += 7) {
       for (let x = 4; x < W; x += 7) {
