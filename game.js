@@ -1061,22 +1061,36 @@ class GameScene extends Phaser.Scene {
       fv.destroy();
 
       // Border-scale corn stalks — bigger than the in-yard 16×16 'corn'
-      // texture (same relationship as bg_saguaro vs. the in-yard cactus),
-      // sized tall and narrow like a plant cluster rather than a landform.
-      const CB_W = 26, CB_H = 42;
+      // texture (same relationship as bg_saguaro vs. the in-yard cactus).
+      // A first pass with 2 thin stalks and 1 cob read as sparse/twee next
+      // to the bulkier hay bales and fence rails it's mixed in among —
+      // 3 stalks of staggered height, 4 splayed leaves, and 2 cobs (one
+      // partly tucked behind the tall middle stalk) give it comparable
+      // visual weight.
+      const CB_W = 32, CB_H = 44;
       const cb = this.make.graphics({ add: false });
       cb.fillStyle(0x000000, 0.18);
-      cb.fillEllipse(CB_W / 2, CB_H - 3, CB_W * 0.7, 5);
+      cb.fillEllipse(CB_W / 2, CB_H - 3, CB_W * 0.75, 5);
       cb.fillStyle(0x3a7a28);
-      cb.fillRect(6, 8, 4, CB_H - 12);          // left stalk
-      cb.fillRect(15, 4, 4, CB_H - 8);          // right (taller) stalk
+      cb.fillRect(7, 10, 4, CB_H - 14);          // left stalk
+      cb.fillRect(15, 4, 4, CB_H - 8);           // middle (tallest) stalk
+      cb.fillRect(22, 13, 4, CB_H - 17);         // right stalk
       cb.fillStyle(0x4d9a38);
-      cb.fillTriangle(2, 16, 8, 12, 6, 20);     // left leaf
-      cb.fillTriangle(CB_W - 2, 10, 15, 8, 17, 16); // right leaf
+      cb.fillTriangle(2, 18, 9, 14, 7, 22);          // left-stalk leaf
+      cb.fillTriangle(9, 10, 15, 7, 13, 14);         // middle-stalk left leaf
+      cb.fillTriangle(21, 14, 15, 11, 17, 18);       // middle-stalk right leaf
+      cb.fillTriangle(CB_W - 2, 17, 22, 14, 24, 21); // right-stalk leaf
+      cb.fillStyle(0x5aab48);
+      cb.fillRect(15, 4, 1, CB_H - 8);           // lit edge on the tall stalk
+      // Secondary cob first (partly behind/beside the primary), darker so
+      // it reads as sitting further back rather than fighting for focus
+      cb.fillStyle(0xd4b432);
+      cb.fillRect(7, 22, 4, 8);
+      // Primary cob, on the tall middle stalk
       cb.fillStyle(0xe8c840);
-      cb.fillRect(15, 12, 5, 10);               // corn cob
+      cb.fillRect(15, 16, 5, 11);
       cb.fillStyle(0xf5dc70, 0.8);
-      cb.fillRect(15, 12, 2, 10);               // cob highlight
+      cb.fillRect(15, 16, 2, 11);                // cob highlight
       cb.generateTexture('bg_corn', CB_W, CB_H);
       cb.destroy();
     }
