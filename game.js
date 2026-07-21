@@ -1144,23 +1144,21 @@ class GameScene extends Phaser.Scene {
 
     // Wild grass blades across the whole border margin — denser and
     // taller than the yard's own accent blades, to read as unmown — plus
-    // scattered wildflowers as small colorful accents among them. Desert
-    // swaps both: sparser, shorter dry-scrub tufts in sun-bleached tan,
-    // and a smaller, sun-washed bloom palette (globemallow coral, brittle-
-    // bush yellow, white) at a lower rate — sparse is the desert look.
-    // Farm keeps the dry golden hay-field blades but drops wildflowers
-    // entirely (bloomChance 0) — the border's already busy with fence/
-    // barn/haybale/corn decor, and flowers dotted between them read as
-    // clutter rather than an accent; the yard's own garden bed still
-    // supplies plenty of color.
+    // scattered wildflowers as small colorful accents among them on forest/
+    // mountain levels. Desert swaps the blades for sparser, shorter dry-
+    // scrub tufts in sun-bleached tan; farm swaps them for dry golden hay-
+    // field tufts. Both desert and farm drop wildflowers entirely
+    // (bloomChance 0) — their borders are already busy with their own
+    // theme-specific decor (buttes/saguaros/prickly-pear, or fence/barn/
+    // haybale/corn), and flowers dotted between them read as clutter
+    // rather than an accent; the yard's own garden bed still supplies
+    // plenty of color.
     const yardL = YARD_X * CELL, yardT = YARD_Y * CELL;
     const yardR = (YARD_X + YARD_COLS) * CELL, yardB = (YARD_Y + YARD_ROWS) * CELL;
-    const wildflowerColors = isDesert
-      ? [0xf0d060, 0xe08050, 0xffffff]
-      : [0xff5555, 0xffdd44, 0xcc55ff, 0xff8844, 0x55ccff, 0xffffff];
+    const wildflowerColors = [0xff5555, 0xffdd44, 0xcc55ff, 0xff8844, 0x55ccff, 0xffffff];
     const bladeColor  = isDesert ? 0x453a1c : isFarm ? 0x6b5518 : 0x0f2408;
     const bladeChance = isDesert ? 0.4 : 0.55;
-    const bloomChance = isDesert ? 0.05 : isFarm ? 0 : 0.1;
+    const bloomChance = isDesert || isFarm ? 0 : 0.1;
     const stemColor   = isDesert ? 0x5a4c26 : isFarm ? 0x4a3a18 : 0x2a5a1a;
     for (let y = 4; y < H; y += 7) {
       for (let x = 4; x < W; x += 7) {
